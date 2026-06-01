@@ -2,9 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { ChartScene } from "@/components/media/ChartScene";
 import { conditionTemplates } from "@/lib/condition-templates";
-import { demoConditionAssets } from "@/lib/demo-media";
 import { platformLabels } from "@/lib/constants";
 import { addEvent } from "@/lib/storage";
 import type { AssetClass, ConditionCategory, ConditionTemplate, ConversionPlatform } from "@/lib/types";
@@ -78,23 +76,6 @@ export function ConditionsExplorer() {
             말로 만들기
           </Link>
         </div>
-      </section>
-
-      <section className="grid gap-3 md:grid-cols-3">
-        {demoConditionAssets.map((asset) => (
-          <article key={asset.id} className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-            <ChartScene variant={asset.variant} compact />
-            <div className="space-y-2 p-4">
-              <div className="flex flex-wrap gap-1.5 text-[11px] font-black">
-                <span className="rounded bg-emerald-50 px-2 py-1 text-emerald-700">{asset.category}</span>
-                <span className="rounded bg-slate-100 px-2 py-1 text-slate-600">{asset.market}</span>
-                <span className="rounded bg-slate-100 px-2 py-1 text-slate-600">{asset.difficulty}</span>
-              </div>
-              <h2 className="text-base font-black text-slate-950">{asset.title}</h2>
-              <p className="text-sm font-semibold leading-5 text-slate-600">{asset.summary}</p>
-            </div>
-          </article>
-        ))}
       </section>
 
       <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
