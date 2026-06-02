@@ -39,9 +39,14 @@ export function ConversionButtons({ strategy }: { strategy: StrategyCard }) {
   return (
     <div className="space-y-3">
       <h3 className="text-sm font-bold text-slate-950">플랫폼 변환 요청</h3>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex gap-2 overflow-x-auto pb-1">
         {platforms.map((platform) => (
-          <Button key={platform} variant="secondary" onClick={() => open(platform)}>
+          <Button
+            key={platform}
+            variant="secondary"
+            className="shrink-0 whitespace-nowrap rounded-full px-3 text-xs font-black"
+            onClick={() => open(platform)}
+          >
             {platform === "tradingview" || platform === "yestrader"
               ? `${platformLabels[platform]} 적용`
               : `${platformLabels[platform]} 요청`}

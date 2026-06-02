@@ -13,7 +13,7 @@ export function AnalyticsConsent() {
   if (!visible) return null;
 
   return (
-    <div className="fixed bottom-5 right-5 z-50 hidden max-w-sm rounded-2xl border border-slate-200 bg-white p-3 shadow-xl md:block">
+    <div className="fixed right-5 top-24 z-40 hidden max-w-sm rounded-2xl border border-slate-200 bg-white p-3 shadow-xl md:block">
       <p className="text-xs leading-5 text-slate-600">
         제품 개선을 위해 익명 행동 데이터를 수집합니다. 실제 투자 정보나 주문 데이터는 수집하지 않습니다.
       </p>

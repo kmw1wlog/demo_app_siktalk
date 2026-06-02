@@ -5,6 +5,8 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { ConversionButtons } from "@/components/conversion/ConversionButtons";
+import { ChartScene } from "@/components/media/ChartScene";
+import { resolveChartSceneVariant } from "@/lib/demo-media";
 import { assetClassLabel, timeframeLabel } from "@/lib/format";
 import type { StrategyCard as StrategyCardType } from "@/lib/types";
 import { SaveToDrawerButton } from "./SaveToDrawerButton";
@@ -23,8 +25,8 @@ export function StrategyCard({
 }) {
   return (
     <Card className="space-y-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_250px] lg:items-start">
+        <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-xl font-black text-slate-950">{strategy.title}</h2>
             <StrategyTypeBadge type={strategy.strategyType} />
@@ -35,10 +37,20 @@ export function StrategyCard({
             </Badge>
           </div>
           <p className="mt-2 text-sm leading-6 text-slate-600">{strategy.summary}</p>
+          <div className="mt-4">
+            <Link href={`/strategy/${strategy.id}`} className="text-sm font-bold text-emerald-700 hover:text-emerald-800">
+              상세 보기
+            </Link>
+          </div>
         </div>
-        <Link href={`/strategy/${strategy.id}`} className="text-sm font-bold text-emerald-700 hover:text-emerald-800">
-          상세 보기
-        </Link>
+        <div className="space-y-2 lg:pl-2">
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <ChartScene variant={resolveChartSceneVariant(strategy)} motion />
+          </div>
+          <p className="text-xs font-semibold leading-5 text-slate-500">
+            이 전략이 주로 쓰이는 장면을 빠르게 떠올리는 참고 영상 자리입니다.
+          </p>
+        </div>
       </div>
 
       <div className="grid gap-5 md:grid-cols-2">
@@ -71,15 +83,29 @@ export function StrategyCard({
         </>
       ) : null}
 
-      <div className="flex flex-wrap gap-2">
-        <SaveToDrawerButton strategy={strategy} />
-        <Button variant="secondary" onClick={() => onBacktest?.(strategy)} disabled={!onBacktest}>
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        <div className="shrink-0">
+          <SaveToDrawerButton strategy={strategy} />
+        </div>
+        <Button
+          variant="secondary"
+          className="shrink-0 whitespace-nowrap"
+          onClick={() => onBacktest?.(strategy)}
+          disabled={!onBacktest}
+        >
           모의검증하기
         </Button>
-        <Button variant="ghost" onClick={() => onBacktest?.(strategy)} disabled={!onBacktest}>
+        <Button
+          variant="ghost"
+          className="shrink-0 whitespace-nowrap"
+          onClick={() => onBacktest?.(strategy)}
+          disabled={!onBacktest}
+        >
           20분 개선
         </Button>
-        <ShareCardButton />
+        <div className="shrink-0">
+          <ShareCardButton />
+        </div>
       </div>
       <ConversionButtons strategy={strategy} />
     </Card>

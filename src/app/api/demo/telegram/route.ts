@@ -1,30 +1,28 @@
-import { DEMO_TELEGRAM_TEXT } from "@/lib/demo-strategy";
+import { formatStrategyCardMessage } from "@/lib/telegramMessage";
+import { sendTelegramMessage } from "@/lib/telegram";
 
 export async function POST() {
-  const token = process.env.TELEGRAM_BOT_TOKEN;
-  const chatId = process.env.TELEGRAM_CHAT_ID;
-
-  if (!token || !chatId) {
+  try {
+    const result = await sendTelegramMessage({
+      text: formatStrategyCardMessage({
+        strategyName: "MA5/MA20 양봉 크로스 관찰 전략",
+        market: "국장",
+        symbol: "005930",
+        timeframe: "15m",
+        observeCondition: "5봉 단순이동평균선이 20봉 단순이동평균선을 상향돌파",
+        exitCondition: "5봉 단순이동평균선이 20봉 단순이동평균선을 하향돌파",
+      }),
+    });
+    return Response.json({
+      ok: true,
+      delivered: result.delivered,
+      demoMode: result.demoMode,
+      message: result.demoMode ? result.reason : "Telegram 데모 알림을 전송했습니다.",
+    });
+  } catch (error) {
     return Response.json(
-      { error: "TELEGRAM_BOT_TOKEN과 TELEGRAM_CHAT_ID 환경변수가 필요합니다." },
+      { error: error instanceof Error ? error.message : "Telegram API 전송에 실패했습니다." },
       { status: 400 },
     );
   }
-
-  const text = DEMO_TELEGRAM_TEXT.replace("{{market}}", "국장")
-    .replace("{{ticker}}", "005930")
-    .replace("{{interval}}", "15m")
-    .replace("{{close}}", "예시 현재가");
-
-  const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ chat_id: chatId, text }),
-  });
-
-  if (!response.ok) {
-    return Response.json({ error: "Telegram API 전송에 실패했습니다." }, { status: 502 });
-  }
-
-  return Response.json({ ok: true });
 }

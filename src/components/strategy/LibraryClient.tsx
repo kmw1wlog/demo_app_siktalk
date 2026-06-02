@@ -1,52 +1,26 @@
 "use client";
 
-import { useState } from "react";
 import { ChartScene } from "@/components/media/ChartScene";
+import { PlatformCarryPanel } from "@/components/platform/PlatformCarryPanel";
 import { strategyTypeLabels } from "@/lib/constants";
-import type { ChartSceneVariant } from "@/lib/demo-media";
+import { resolveChartSceneVariant } from "@/lib/demo-media";
 import { assetClassLabel, timeframeLabel } from "@/lib/format";
 import { seedStrategies } from "@/lib/seed-strategies";
-import type { StrategyCard as StrategyCardType } from "@/lib/types";
-
-const variants: ChartSceneVariant[] = [
-  "volumeBreakout",
-  "rsiBounce",
-  "gapPullback",
-  "openRetest",
-  "closingHold",
-  "moneyRank",
-];
 
 export function LibraryClient() {
-  const [copiedId, setCopiedId] = useState("");
-
-  async function copyStrategy(strategy: StrategyCardType) {
-    try {
-      await navigator.clipboard.writeText(buildCopyBlock(strategy));
-      setCopiedId(strategy.id);
-    } catch {
-      setCopiedId("failed");
-    }
-  }
-
   return (
     <div className="mx-auto max-w-6xl space-y-5">
       <div>
         <h1 className="text-3xl font-black text-slate-950">자료실</h1>
         <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">
-          영상으로 상황을 먼저 보고, 조건 절차와 복붙용 초안을 한 카드에서 확인합니다.
+          기존 카드 흐름은 유지하고, 우측 참고 영상과 하단 플랫폼별 초안을 함께 둡니다.
         </p>
       </div>
 
       <div className="space-y-4">
-        {seedStrategies.map((strategy, index) => (
+        {seedStrategies.map((strategy) => (
           <article key={strategy.id} className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-            <div className="grid gap-4 p-4 md:grid-cols-[260px_minmax(0,1fr)]">
-              <div className="space-y-2">
-                <ChartScene variant={variants[index % variants.length]} compact />
-                <p className="text-xs font-bold text-slate-500">영상 자리 · 16:9 · 권장 640x360</p>
-              </div>
-
+            <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_240px] lg:items-start">
               <div className="min-w-0 space-y-4">
                 <div>
                   <div className="flex flex-wrap gap-1.5 text-[11px] font-black">
@@ -67,24 +41,19 @@ export function LibraryClient() {
                   <ProcedureBlock title="필터" items={strategy.conditions.filters} />
                 </div>
               </div>
+
+              <aside className="space-y-2 lg:pl-1">
+                <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                  <ChartScene variant={resolveChartSceneVariant(strategy)} motion />
+                </div>
+                <p className="text-xs font-semibold leading-5 text-slate-500">
+                  이 카드가 언제 쓰이는지 바로 떠올릴 수 있게 우측에 참고 영상을 둡니다.
+                </p>
+              </aside>
             </div>
 
             <div className="border-t border-slate-200 bg-slate-50 p-4">
-              <div className="mb-2 flex items-center justify-between gap-3">
-                <h3 className="text-sm font-black text-slate-950">복붙용 조건식 초안</h3>
-                <button
-                  type="button"
-                  className="rounded border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700"
-                  onClick={() => void copyStrategy(strategy)}
-                >
-                  복사
-                </button>
-              </div>
-              <pre className="max-h-52 overflow-auto rounded bg-[#07111f] p-3 text-xs leading-5 text-slate-100">
-                <code>{buildCopyBlock(strategy)}</code>
-              </pre>
-              {copiedId === strategy.id ? <p className="mt-2 text-xs font-bold text-emerald-700">복사했습니다.</p> : null}
-              {copiedId === "failed" ? <p className="mt-2 text-xs font-bold text-rose-600">복사에 실패했습니다.</p> : null}
+              <PlatformCarryPanel strategy={strategy} compact />
             </div>
           </article>
         ))}
@@ -109,31 +78,4 @@ function ProcedureBlock({ title, items }: { title: string; items: string[] }) {
       </ol>
     </section>
   );
-}
-
-function buildCopyBlock(strategy: StrategyCardType) {
-  return `[식톡 조건식 초안]
-전략명: ${strategy.title}
-유형: ${strategyTypeLabels[strategy.strategyType]}
-자산: ${assetClassLabel(strategy.assetClass)}
-시간봉: ${timeframeLabel(strategy.timeframe)}
-
-ENTRY:
-${formatLines(strategy.conditions.entry)}
-
-EXIT:
-${formatLines(strategy.conditions.exit)}
-
-UNIVERSE:
-${formatLines(strategy.conditions.universe)}
-
-FILTER:
-${formatLines(strategy.conditions.filters)}
-
-NOTICE:
-실제 투자 추천이 아니며, 각 플랫폼 적용 전 사용자가 조건을 직접 확인해야 합니다.`;
-}
-
-function formatLines(items: string[]) {
-  return items.map((item, index) => `${index + 1}. ${item}`).join("\n");
 }
