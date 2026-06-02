@@ -7,6 +7,7 @@ import { DemoPlatformPanel } from "@/components/demo/DemoPlatformPanel";
 import { Textarea } from "@/components/ui/Textarea";
 import { quickIdeas } from "@/lib/constants";
 import { DEMO_STRATEGY, isDemoStrategyQuestion } from "@/lib/demo-strategy";
+import { trackMixpanel } from "@/lib/mixpanel";
 import { addEvent } from "@/lib/storage";
 import type { AssetClass, StrategyCard as StrategyCardType } from "@/lib/types";
 
@@ -55,6 +56,18 @@ export function StrategyInput({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const appOpenedRef = useRef(false);
+  const stageEventKeyRef = useRef("");
+
+  useEffect(() => {
+    if (appOpenedRef.current) return;
+    appOpenedRef.current = true;
+    trackMixpanel("app_opened", {
+      entry_surface: "app",
+      initial_source: initialSource,
+      initial_view: initialView,
+    });
+  }, [initialSource, initialView]);
 
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -62,6 +75,18 @@ export function StrategyInput({
     textarea.style.height = "auto";
     textarea.style.height = `${Math.min(textarea.scrollHeight, 112)}px`;
   }, [rawIdea]);
+
+  useEffect(() => {
+    const eventKey = `${demoView}:${strategy?.id ?? "none"}:${previousDemoView}`;
+    if (stageEventKeyRef.current === eventKey) return;
+    stageEventKeyRef.current = eventKey;
+    trackMixpanel("app_stage_viewed", {
+      market: selectedMarket,
+      source: previousDemoView,
+      stage: demoView,
+      strategy_present: Boolean(strategy),
+    });
+  }, [demoView, previousDemoView, selectedMarket, strategy]);
 
   useEffect(() => {
     const saved = window.localStorage.getItem("siktalk.selectedMarket");
@@ -80,6 +105,7 @@ export function StrategyInput({
   function selectMarket(market: AssetClass) {
     setSelectedMarket(market);
     window.localStorage.setItem("siktalk.selectedMarket", market);
+    trackMixpanel("market_selected", { market });
   }
 
   async function createStrategy(ideaFromTemplate?: string) {
@@ -88,7 +114,14 @@ export function StrategyInput({
       setError("전략 아이디어를 한 문장으로 적어주세요.");
       return;
     }
-    if (isDemoStrategyQuestion(idea) || idea.includes("5일선 20일선") || idea.includes("5·20선")) {
+    const demoIntent = isDemoStrategyQuestion(idea) || idea.includes("5일선 20일선") || idea.includes("5·20선");
+    trackMixpanel("strategy_prompt_submitted", {
+      input_length: idea.length,
+      is_demo_intent: demoIntent,
+      market: selectedMarket,
+      source: ideaFromTemplate ? "chip" : "composer",
+    });
+    if (demoIntent) {
       const createdAt = new Date().toISOString();
       const nextStrategy = { ...DEMO_STRATEGY, createdAt, updatedAt: createdAt };
       setStrategy(nextStrategy);
@@ -97,6 +130,11 @@ export function StrategyInput({
       setDemoView("chat");
       setPreviousDemoView("chat");
       setError("");
+      trackMixpanel("demo_strategy_seeded", {
+        market: selectedMarket,
+        source: ideaFromTemplate ? "chip" : "composer",
+        strategy_id: nextStrategy.id,
+      });
       addEvent({
         type: "strategy_created",
         strategyId: nextStrategy.id,
@@ -134,6 +172,11 @@ export function StrategyInput({
 
   function selectDemoStrategy(source: "chat" | "conditions" = "chat") {
     const createdAt = new Date().toISOString();
+    trackMixpanel("ai_strategy_selected", {
+      source,
+      strategy_id: DEMO_STRATEGY.id,
+      strategy_name: DEMO_STRATEGY.title,
+    });
     setStrategy({ ...DEMO_STRATEGY, createdAt, updatedAt: createdAt });
     setShowDemoPanel(true);
     setPreviousDemoView(source);
@@ -147,6 +190,7 @@ export function StrategyInput({
           <HomeStage
             marketIdeas={marketIdeas[selectedMarket]}
             onDemo={() => {
+              trackMixpanel("demo_cta_clicked", { location: "home_hero" });
               setRawIdea("5일선 20일선 골든크로스 전략 찾아줘");
               selectMarket("koreanStock");
               void createStrategy("5일선 20일선 골든크로스 전략 찾아줘");
@@ -167,7 +211,13 @@ export function StrategyInput({
               }
               setDemoView("chat");
             }}
-            onApply={() => setDemoView("chart")}
+            onApply={() => {
+              trackMixpanel("chart_apply_clicked", {
+                strategy_id: strategy.id,
+                strategy_name: strategy.title,
+              });
+              setDemoView("chart");
+            }}
           />
         ) : null}
 

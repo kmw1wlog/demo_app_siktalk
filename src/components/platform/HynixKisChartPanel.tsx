@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SeriesMarker, UTCTimestamp } from "lightweight-charts";
 import type { HynixChartSnapshot } from "@/lib/kis-minute-chart";
+import { trackMixpanel } from "@/lib/mixpanel";
 
 type ApiResponse = {
   ok?: boolean;
@@ -21,13 +22,14 @@ export function HynixKisChartPanel() {
   const [error, setError] = useState("");
   const containerRef = useRef<HTMLDivElement | null>(null);
 
-  const loadChart = useCallback(async (nextRefresh = false) => {
-    if (nextRefresh) {
+  const loadChart = useCallback(async (source: "initial" | "refresh") => {
+    if (source === "refresh") {
       setRefreshing(true);
     } else {
       setLoading(true);
     }
     setError("");
+    const startedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
 
     try {
       const response = await fetch(`/api/kis/hynix-chart?strengthThreshold=${encodeURIComponent(strengthThreshold)}`, {
@@ -38,8 +40,28 @@ export function HynixKisChartPanel() {
         throw new Error(data.error || "KIS 하이닉스 차트 데이터를 불러오지 못했습니다.");
       }
       setSnapshot(data.snapshot);
+      const elapsed = (typeof performance !== "undefined" ? performance.now() : Date.now()) - startedAt;
+      trackMixpanel("chart_load_completed", {
+        candle_count: data.snapshot.candles.length,
+        execution_strength: data.snapshot.executionStrength.value,
+        latest_close: data.snapshot.latestClose,
+        load_ms: Math.round(elapsed),
+        marker_count: data.snapshot.markers.length,
+        source,
+        strength_threshold: strengthThreshold,
+        symbol: "000660",
+      });
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "KIS 차트 요청에 실패했습니다.");
+      const message = caught instanceof Error ? caught.message : "KIS 차트 요청에 실패했습니다.";
+      setError(message);
+      const elapsed = (typeof performance !== "undefined" ? performance.now() : Date.now()) - startedAt;
+      trackMixpanel("chart_load_failed", {
+        error_message: message.slice(0, 160),
+        load_ms: Math.round(elapsed),
+        source,
+        strength_threshold: strengthThreshold,
+        symbol: "000660",
+      });
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -50,13 +72,27 @@ export function HynixKisChartPanel() {
     try {
       await navigator.clipboard.writeText(buildPineScript(strengthThreshold, barLimit, drawdownLimit));
       setCopyStatus("TradingView Pine Script를 복사했습니다.");
+      trackMixpanel("platform_copy_clicked", {
+        copy_type: "pine_script",
+        platform: "tradingview",
+        status: "success",
+        strategy_name: "5·20선 골든크로스 + 거래량 회복",
+        symbol: "000660",
+      });
     } catch {
       setCopyStatus("복사에 실패했습니다. 브라우저 권한을 확인하세요.");
+      trackMixpanel("platform_copy_clicked", {
+        copy_type: "pine_script",
+        platform: "tradingview",
+        status: "failed",
+        strategy_name: "5·20선 골든크로스 + 거래량 회복",
+        symbol: "000660",
+      });
     }
   }
 
   useEffect(() => {
-    void loadChart(false);
+    void loadChart("initial");
   }, [loadChart]);
 
   useEffect(() => {
@@ -198,7 +234,13 @@ export function HynixKisChartPanel() {
           type="button"
           className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 shadow-sm disabled:opacity-50"
           disabled={loading || refreshing}
-          onClick={() => void loadChart(true)}
+          onClick={() => {
+            trackMixpanel("chart_refresh_clicked", {
+              strength_threshold: strengthThreshold,
+              symbol: "000660",
+            });
+            void loadChart("refresh");
+          }}
         >
           {refreshing ? "새로 적용 중" : "실데이터 새로고침"}
         </button>

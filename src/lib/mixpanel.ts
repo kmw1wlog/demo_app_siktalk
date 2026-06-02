@@ -1,21 +1,19 @@
 "use client";
 
-type MixpanelLike = {
-  init: (token: string, config?: Record<string, unknown>) => void;
-  track: (eventName: string, properties?: Record<string, unknown>) => void;
-  register: (properties: Record<string, unknown>) => void;
-};
+import mixpanel from "mixpanel-browser";
+
+type MixpanelLike = typeof mixpanel;
 
 declare global {
   interface Window {
     mixpanel?: MixpanelLike;
-    __siktalkMixpanelLoading?: boolean;
   }
 }
 
-const token = "3b18770397406dc6cf4e603ad4b35d07";
+const fallbackToken = "3b18770397406dc6cf4e603ad4b35d07";
 const consentKey = "siktalk.analyticsConsent";
-const scriptId = "mixpanel-sdk";
+let mixpanelPromise: Promise<void> | null = null;
+let mixpanelReady = false;
 
 export function hasAnalyticsConsent(): boolean {
   if (typeof window === "undefined") return false;
@@ -25,51 +23,78 @@ export function hasAnalyticsConsent(): boolean {
 export function grantAnalyticsConsent(): void {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(consentKey, "granted");
-  void ensureMixpanel();
+  void initMixpanel();
 }
 
 export function trackMixpanel(eventName: string, properties: Record<string, unknown> = {}): void {
   if (!hasAnalyticsConsent()) return;
-  void ensureMixpanel().then(() => {
+  void initMixpanel().then(() => {
     window.mixpanel?.track(eventName, {
       ...properties,
-      app: "siktalk",
-      environment: process.env.NODE_ENV,
+      ...commonProperties(),
     });
   });
 }
 
-function ensureMixpanel(): Promise<void> {
-  if (typeof window === "undefined") return Promise.resolve();
-  if (window.mixpanel) return Promise.resolve();
-  if (window.__siktalkMixpanelLoading) {
-    return new Promise((resolve) => window.setTimeout(resolve, 300));
-  }
+export function setMixpanelProfile(properties: Record<string, unknown>): void {
+  if (!hasAnalyticsConsent()) return;
+  void initMixpanel().then(() => {
+    window.mixpanel?.people?.set?.(properties);
+  });
+}
 
-  window.__siktalkMixpanelLoading = true;
-  return new Promise((resolve) => {
-    const existing = document.getElementById(scriptId);
-    if (existing) {
-      resolve();
-      return;
-    }
-    const script = document.createElement("script");
-    script.id = scriptId;
-    script.async = true;
-    script.src = "https://cdn.mxpnl.com/libs/mixpanel-2-latest.min.js";
-    script.onload = () => {
-      window.mixpanel?.init(token, {
+export function initMixpanel(): Promise<void> {
+  if (typeof window === "undefined") return Promise.resolve();
+  if (!hasAnalyticsConsent()) return Promise.resolve();
+  if (mixpanelReady) return Promise.resolve();
+  if (mixpanelPromise) return mixpanelPromise;
+
+  mixpanelPromise = new Promise((resolve) => {
+    try {
+      mixpanel.init(getMixpanelToken(), {
+        api_transport: "XHR",
+        autocapture: true,
+        batch_requests: false,
         debug: process.env.NODE_ENV !== "production",
         persistence: "localStorage",
+        track_pageview: false,
       });
-      window.mixpanel?.register({ app: "siktalk", surface: "web" });
-      window.__siktalkMixpanelLoading = false;
+      mixpanel.register({
+        app: "siktalk",
+        environment: process.env.NODE_ENV,
+        surface: "web",
+      });
+      window.mixpanel = mixpanel;
+      mixpanelReady = true;
       resolve();
-    };
-    script.onerror = () => {
-      window.__siktalkMixpanelLoading = false;
+    } catch {
+      mixpanelPromise = null;
       resolve();
-    };
-    document.head.appendChild(script);
+    }
   });
+
+  return mixpanelPromise;
+}
+
+function getMixpanelToken(): string {
+  return process.env.NEXT_PUBLIC_MIXPANEL_TOKEN || fallbackToken;
+}
+
+function commonProperties(): Record<string, unknown> {
+  if (typeof window === "undefined") {
+    return {
+      app: "siktalk",
+      environment: process.env.NODE_ENV,
+      surface: "web",
+    };
+  }
+  return {
+    app: "siktalk",
+    current_path: window.location.pathname,
+    current_url: window.location.href,
+    environment: process.env.NODE_ENV,
+    screen_height: window.screen.height,
+    screen_width: window.screen.width,
+    surface: "web",
+  };
 }

@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ChartScene } from "@/components/media/ChartScene";
 import { conditionTemplates } from "@/lib/condition-templates";
 import { resolveChartSceneVariant } from "@/lib/demo-media";
+import { trackMixpanel } from "@/lib/mixpanel";
 import type { AssetClass, ConditionCategory, ConditionTemplate } from "@/lib/types";
 
 const categoryLabels: Record<ConditionCategory | "all", string> = {
@@ -71,6 +72,7 @@ export function ConditionsExplorer() {
   const [originRect, setOriginRect] = useState<Rect | null>(null);
   const [expanded, setExpanded] = useState(false);
   const cardRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const lastSearchKeyRef = useRef("");
 
   const filtered = useMemo(() => {
     const keyword = query.trim().toLowerCase();
@@ -92,6 +94,35 @@ export function ConditionsExplorer() {
   const selectedTemplate = visibleTemplates.find((template) => template.id === selectedId) ?? visibleTemplates[0] ?? conditionTemplates[0];
 
   useEffect(() => {
+    trackMixpanel("condition_list_viewed", {
+      category,
+      market,
+      result_count: visibleTemplates.length,
+      selected_condition_id: selectedTemplate?.id ?? null,
+    });
+  }, [category, market, selectedTemplate?.id, visibleTemplates.length]);
+
+  useEffect(() => {
+    const keyword = query.trim().toLowerCase();
+    if (!keyword) {
+      lastSearchKeyRef.current = "";
+      return;
+    }
+    const searchKey = `${category}:${market}:${keyword}`;
+    if (lastSearchKeyRef.current === searchKey) {
+      return;
+    }
+    lastSearchKeyRef.current = searchKey;
+    trackMixpanel("condition_search_performed", {
+      category,
+      market,
+      query: keyword,
+      query_length: keyword.length,
+      result_count: visibleTemplates.length,
+    });
+  }, [category, market, query, visibleTemplates.length]);
+
+  useEffect(() => {
     if (!activeTemplate) {
       return;
     }
@@ -108,8 +139,17 @@ export function ConditionsExplorer() {
     };
   }, [activeTemplate]);
 
-  function openDetail(template: ConditionTemplate) {
+  function openDetail(template: ConditionTemplate, source: "grid" | "preview") {
     setSelectedId(template.id);
+    trackMixpanel("condition_detail_opened", {
+      category: template.category,
+      condition_id: template.id,
+      condition_name: template.title,
+      difficulty: template.difficulty,
+      guide_available: Boolean(indicatorGuides[template.id]),
+      market: template.market,
+      source,
+    });
     const node = cardRefs.current[template.id];
     if (!node) {
       setActiveTemplate(template);
@@ -199,7 +239,7 @@ export function ConditionsExplorer() {
                 }}
                 template={template}
                 active={selectedTemplate?.id === template.id}
-                onSelect={() => openDetail(template)}
+                onSelect={() => openDetail(template, "grid")}
               />
             ))}
           </section>
@@ -209,7 +249,7 @@ export function ConditionsExplorer() {
           </section>
         )}
 
-        {selectedTemplate ? <SelectedPreview template={selectedTemplate} onOpen={() => openDetail(selectedTemplate)} /> : null}
+        {selectedTemplate ? <SelectedPreview template={selectedTemplate} onOpen={() => openDetail(selectedTemplate, "preview")} /> : null}
       </div>
 
       {activeTemplate ? (
@@ -321,6 +361,13 @@ function SelectedPreview({ template, onOpen }: { template: ConditionTemplate; on
 
       <Link
         href={strategyHref}
+        onClick={() =>
+          trackMixpanel("strategy_card_requested", {
+            condition_id: template.id,
+            condition_name: template.title,
+            source: "conditions_preview",
+          })
+        }
         className="mt-5 flex h-14 items-center justify-center rounded-2xl bg-emerald-600 text-base font-black text-white shadow-lg shadow-emerald-100 transition hover:bg-emerald-700"
       >
         전략 카드 만들기 →

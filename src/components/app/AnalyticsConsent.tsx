@@ -1,13 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { grantAnalyticsConsent, hasAnalyticsConsent } from "@/lib/mixpanel";
+import { grantAnalyticsConsent, hasAnalyticsConsent, initMixpanel, trackMixpanel } from "@/lib/mixpanel";
 
 export function AnalyticsConsent() {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
-    setVisible(!hasAnalyticsConsent());
+    const consented = hasAnalyticsConsent();
+    setVisible(!consented);
+    if (consented) {
+      void initMixpanel();
+    }
   }, []);
 
   if (!visible) return null;
@@ -23,6 +27,7 @@ export function AnalyticsConsent() {
           className="rounded-full bg-slate-950 px-3 py-2 text-xs font-bold text-white"
           onClick={() => {
             grantAnalyticsConsent();
+            trackMixpanel("analytics_consent_granted", { placement: "floating_banner" });
             setVisible(false);
           }}
         >

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { MaCrossAlert } from "@/lib/ma-cross-alert";
+import { trackMixpanel } from "@/lib/mixpanel";
 
 type ApiResponse = {
   ok?: boolean;
@@ -29,15 +30,34 @@ export function KisInAppAlertPanel() {
       const response = await fetch("/api/kis/ma-cross-alert", { method: "POST" });
       const data = (await response.json()) as ApiResponse;
       if (!response.ok || !data.ok || !data.alert) {
-        setStatus(data.error || "KIS 인앱 알림 확인에 실패했습니다.");
+        const message = data.error || "KIS 인앱 알림 확인에 실패했습니다.";
+        setStatus(message);
+        trackMixpanel("kis_alert_checked", {
+          mode: data.mode || "paper",
+          status: "failed",
+          error_message: message.slice(0, 160),
+        });
         return;
       }
       setAlert(data.alert);
       setMode(data.mode || "paper");
       setCredentialMessage(data.credential?.message || data.alert.credentialMessage || "");
       setStatus(data.alert.message);
+      trackMixpanel("kis_alert_checked", {
+        mode: data.mode || "paper",
+        signal_type: data.alert.triggered ? "ma5_ma20_cross" : "standby",
+        source: data.alert.source,
+        status: "success",
+        symbol: data.alert.symbol,
+        timeframe: data.alert.timeframe,
+        triggered: data.alert.triggered,
+      });
     } catch {
       setStatus("KIS 인앱 알림 요청에 실패했습니다.");
+      trackMixpanel("kis_alert_checked", {
+        mode,
+        status: "failed",
+      });
     } finally {
       setLoading(false);
     }
