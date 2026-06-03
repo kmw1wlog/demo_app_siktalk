@@ -10,7 +10,7 @@ import { DEMO_STRATEGY, isDemoStrategyQuestion } from "@/lib/demo-strategy";
 import { markFeedbackSignal, setFeedbackLastScreen } from "@/lib/feedback-session";
 import { trackEvent } from "@/lib/mixpanel";
 import { addEvent } from "@/lib/storage";
-import type { AssetClass, StrategyCard as StrategyCardType } from "@/lib/types";
+import type { AssetClass, ConditionCategory, StrategyCard as StrategyCardType, StrategyType } from "@/lib/types";
 
 type AiStrategyChatResponse = {
   ok?: boolean;
@@ -19,6 +19,32 @@ type AiStrategyChatResponse = {
   model?: string;
   fallbackUsed?: boolean;
   error?: string;
+  stage?: "clarify" | "recommend" | "done";
+  intentType?: "find_condition" | "build_strategy" | "explain_condition" | "clarify_request";
+  turn?: number;
+  maxTurns?: number;
+  followUpQuestion?: string;
+  followUpOptions?: string[];
+  candidates?: AssistantCandidate[];
+};
+
+type AssistantCandidate = {
+  id: string;
+  title: string;
+  category: ConditionCategory;
+  market: AssetClass;
+  strategyType: StrategyType;
+  difficulty: "easy" | "medium" | "advanced";
+  plainKorean: string;
+  whyUse: string;
+  tags: string[];
+  score: number;
+};
+
+type ConversationMessage = {
+  role: "user" | "assistant";
+  text: string;
+  provider?: "qwen" | "fallback";
 };
 
 const marketOptions: { label: string; value: AssetClass; hint: string }[] = [
@@ -60,8 +86,12 @@ export function StrategyInput({
   const [rawIdea, setRawIdea] = useState(initialIdea);
   const [selectedMarket, setSelectedMarket] = useState<AssetClass>("koreanStock");
   const [strategy, setStrategy] = useState<StrategyCardType | null>(null);
-  const [aiAnswer, setAiAnswer] = useState("");
-  const [aiProvider, setAiProvider] = useState<"qwen" | "fallback" | "idle">("idle");
+  const [assistantCandidates, setAssistantCandidates] = useState<AssistantCandidate[]>([]);
+  const [followUpQuestion, setFollowUpQuestion] = useState("");
+  const [followUpOptions, setFollowUpOptions] = useState<string[]>([]);
+  const [conversationMessages, setConversationMessages] = useState<ConversationMessage[]>([]);
+  const [conversationTurn, setConversationTurn] = useState(0);
+  const [maxTurns, setMaxTurns] = useState(3);
   const [showDemoPanel, setShowDemoPanel] = useState(false);
   const [demoView, setDemoView] = useState<"home" | "chat" | "card" | "chart">(initialView);
   const [previousDemoView, setPreviousDemoView] = useState<"chat" | "conditions">(initialSource);
@@ -130,6 +160,10 @@ export function StrategyInput({
     setLoading(true);
     setError("");
     const demoIntent = isDemoStrategyQuestion(idea) || idea.includes("5일선 20일선") || idea.includes("5·20선");
+    const userHistory = conversationMessages
+      .filter((message) => message.role === "user")
+      .map((message) => message.text);
+
     void trackEvent("AI Prompt Submitted", {
       prompt_text: idea,
       input_length: idea.length,
@@ -137,9 +171,12 @@ export function StrategyInput({
       market: selectedMarket,
       source: ideaFromTemplate ? "chip" : "composer",
     });
-    const aiResult = await requestAiChat(idea);
-    setAiAnswer(aiResult.answer);
-    setAiProvider(aiResult.provider);
+    const aiResult = await requestAiChat({
+      rawIdea: idea,
+      history: userHistory,
+      selectedMarket,
+      turn: conversationTurn + 1,
+    });
     void trackEvent("AI Prompt Answered", {
       fallback_used: aiResult.fallbackUsed,
       model: aiResult.model,
@@ -147,18 +184,70 @@ export function StrategyInput({
       prompt_text: idea,
       status: aiResult.error ? "fallback" : "success",
     });
-    if (demoIntent) {
-      const createdAt = new Date().toISOString();
-      const nextStrategy = { ...DEMO_STRATEGY, createdAt, updatedAt: createdAt };
-      setStrategy(nextStrategy);
-      setRawIdea("");
+    setConversationMessages((previous) => [
+      ...previous,
+      { role: "user", text: idea },
+      { role: "assistant", text: aiResult.answer, provider: aiResult.provider },
+    ]);
+    setAssistantCandidates(aiResult.candidates ?? []);
+    setFollowUpQuestion(aiResult.followUpQuestion ?? "");
+    setFollowUpOptions(aiResult.followUpOptions ?? []);
+    setConversationTurn(aiResult.turn ?? conversationTurn + 1);
+    setMaxTurns(aiResult.maxTurns ?? 3);
+    setRawIdea("");
+    setShowDemoPanel(false);
+    setDemoView("chat");
+    setPreviousDemoView("chat");
+    setError("");
+    setLoading(false);
+  }
+
+  async function selectAssistantCandidate(candidate: AssistantCandidate, source: "chat" | "conditions" = "chat") {
+    const createdAt = new Date().toISOString();
+    void trackEvent("Strategy Card Clicked", {
+      source,
+      strategy_id: candidate.id,
+      strategy_name: candidate.title,
+    });
+    markFeedbackSignal("strategy_clicked", "/app:card");
+    setLoading(true);
+    try {
+      const response = await fetch("/api/strategy/parse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rawIdea: `${conversationMessages.filter((message) => message.role === "user").map((message) => message.text).join(" ")} ${candidate.title} ${candidate.plainKorean}`,
+        }),
+      });
+      const data = (await response.json()) as { strategy?: StrategyCardType; error?: string };
+      if (!response.ok || !data.strategy) throw new Error(data.error ?? "전략 카드를 만들지 못했습니다.");
+
+      const categoryItems = data.strategy.conditions[candidate.category];
+      const nextStrategy: StrategyCardType = {
+        ...data.strategy,
+        title: candidate.title,
+        summary: candidate.plainKorean,
+        strategyType: candidate.strategyType,
+        assetClass: candidate.market,
+        conditions: {
+          ...data.strategy.conditions,
+          [candidate.category]: Array.from(new Set([candidate.plainKorean, ...categoryItems])),
+        },
+        suitableRegime: Array.from(new Set([candidate.whyUse, ...data.strategy.suitableRegime])).slice(0, 3),
+        validationIdea: `${candidate.title} 기준이 실제로 자주 나오는지 먼저 보고, 안 맞는 구간은 80개 조건식 DB에서 추가로 좁혀보세요.`,
+      };
+
+      setStrategy({
+        ...nextStrategy,
+        createdAt,
+        updatedAt: createdAt,
+      });
       setShowDemoPanel(true);
-      setDemoView("chat");
-      setPreviousDemoView("chat");
-      setError("");
+      setPreviousDemoView(source);
+      setDemoView("card");
       void trackEvent("Strategy Card Created", {
         market: selectedMarket,
-        source: ideaFromTemplate ? "chip" : "composer",
+        source,
         strategy_id: nextStrategy.id,
         strategy_name: nextStrategy.title,
       });
@@ -168,52 +257,11 @@ export function StrategyInput({
         strategyType: nextStrategy.strategyType,
         createdAt,
       });
-      setLoading(false);
-      return;
-    }
-    setShowDemoPanel(false);
-    try {
-      const response = await fetch("/api/strategy/parse", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rawIdea: idea }),
-      });
-      const data = (await response.json()) as { strategy?: StrategyCardType; error?: string };
-      if (!response.ok || !data.strategy) throw new Error(data.error ?? "전략 카드를 만들지 못했습니다.");
-      setStrategy(data.strategy);
-      setRawIdea("");
-      setShowDemoPanel(false);
-      void trackEvent("Strategy Card Created", {
-        market: selectedMarket,
-        source: ideaFromTemplate ? "chip" : "composer",
-        strategy_id: data.strategy.id,
-        strategy_name: data.strategy.title,
-      });
-      addEvent({
-        type: "strategy_created",
-        strategyId: data.strategy.id,
-        strategyType: data.strategy.strategyType,
-        createdAt: new Date().toISOString(),
-      });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "알 수 없는 오류가 발생했습니다.");
     } finally {
       setLoading(false);
     }
-  }
-
-  function selectDemoStrategy(source: "chat" | "conditions" = "chat") {
-    const createdAt = new Date().toISOString();
-    void trackEvent("Strategy Card Clicked", {
-      source,
-      strategy_id: DEMO_STRATEGY.id,
-      strategy_name: DEMO_STRATEGY.title,
-    });
-    markFeedbackSignal("strategy_clicked", "/app:card");
-    setStrategy({ ...DEMO_STRATEGY, createdAt, updatedAt: createdAt });
-    setShowDemoPanel(true);
-    setPreviousDemoView(source);
-    setDemoView("card");
   }
 
   return (
@@ -232,16 +280,22 @@ export function StrategyInput({
           />
         ) : null}
 
-        {demoView === "chat" && strategy ? (
+        {demoView === "chat" && conversationMessages.length > 0 ? (
           <ChatStage
-            aiAnswer={aiAnswer}
-            aiProvider={aiProvider}
-            onSelect={() => selectDemoStrategy("chat")}
+            candidates={assistantCandidates}
+            conversationMessages={conversationMessages}
+            followUpOptions={followUpOptions}
+            followUpQuestion={followUpQuestion}
+            maxTurns={maxTurns}
+            turn={conversationTurn}
+            onSelect={(candidate) => void selectAssistantCandidate(candidate, "chat")}
+            onSelectFollowUp={(nextIdea) => void createStrategy(nextIdea)}
           />
         ) : null}
 
         {demoView === "card" && strategy ? (
           <StrategyCardStage
+            strategy={strategy}
             previousLabel={previousDemoView === "conditions" ? "전략 목록으로" : "AI 대화로"}
             onBack={() => {
               if (previousDemoView === "conditions") {
@@ -414,12 +468,17 @@ function HomeStage({
   );
 }
 
-async function requestAiChat(rawIdea: string): Promise<Required<Pick<AiStrategyChatResponse, "answer" | "provider" | "fallbackUsed" | "model">> & { error?: string }> {
+async function requestAiChat(input: {
+  rawIdea: string;
+  selectedMarket: AssetClass;
+  history: string[];
+  turn: number;
+}): Promise<Required<Pick<AiStrategyChatResponse, "answer" | "provider" | "fallbackUsed" | "model">> & Omit<AiStrategyChatResponse, "ok" | "answer" | "provider" | "fallbackUsed" | "model">> {
   try {
     const response = await fetch("/api/ai/strategy-chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ rawIdea }),
+      body: JSON.stringify(input),
     });
     const data = (await response.json()) as AiStrategyChatResponse;
     if (!response.ok || !data.answer || !data.provider) {
@@ -431,6 +490,13 @@ async function requestAiChat(rawIdea: string): Promise<Required<Pick<AiStrategyC
       fallbackUsed: Boolean(data.fallbackUsed),
       model: data.model || "unknown",
       error: data.error,
+      candidates: data.candidates ?? [],
+      followUpOptions: data.followUpOptions ?? [],
+      followUpQuestion: data.followUpQuestion ?? "",
+      intentType: data.intentType,
+      maxTurns: data.maxTurns,
+      stage: data.stage,
+      turn: data.turn,
     };
   } catch (error) {
     return {
@@ -439,67 +505,90 @@ async function requestAiChat(rawIdea: string): Promise<Required<Pick<AiStrategyC
       fallbackUsed: true,
       model: "fallback",
       error: error instanceof Error ? error.message : String(error),
+      candidates: [],
+      followUpOptions: [],
+      followUpQuestion: "",
+      intentType: "find_condition",
+      maxTurns: 3,
+      stage: "recommend",
+      turn: input.turn,
     };
   }
 }
 
-function ChatStage({ aiAnswer, aiProvider, onSelect }: { aiAnswer: string; aiProvider: "qwen" | "fallback" | "idle"; onSelect: () => void }) {
-  const candidates = [
-    {
-      label: "추천 1",
-      title: "5·20선 골든크로스 + 거래량 회복",
-      summary: "5일선이 20일선을 돌파하고, 거래량이 최근 평균보다 회복된 종목을 관찰합니다.",
-      situation: "상승 추세 전환 초기 구간에서 모멘텀을 확인하고 싶을 때",
-      difficulty: "쉬움",
-      active: true,
-    },
-    {
-      label: "추천 2",
-      title: "거래량 돌파 확인식",
-      summary: "거래량이 전일 대비 크게 증가하며 주요 가격선을 돌파한 구간을 봅니다.",
-      situation: "강한 수급이 유입되는 단기 돌파 구간을 찾고 싶을 때",
-      difficulty: "중간",
-      active: false,
-    },
-    {
-      label: "추천 3",
-      title: "눌림목 재상승 관찰식",
-      summary: "조정 후 5일선 지지 확인과 거래량 반응으로 재상승 후보를 봅니다.",
-      situation: "단기 조정 이후 반등 시점을 관찰하고 싶을 때",
-      difficulty: "중간",
-      active: false,
-    },
-  ];
-
+function ChatStage({
+  candidates,
+  conversationMessages,
+  followUpOptions,
+  followUpQuestion,
+  maxTurns,
+  turn,
+  onSelect,
+  onSelectFollowUp,
+}: {
+  candidates: AssistantCandidate[];
+  conversationMessages: ConversationMessage[];
+  followUpOptions: string[];
+  followUpQuestion: string;
+  maxTurns: number;
+  turn: number;
+  onSelect: (candidate: AssistantCandidate) => void;
+  onSelectFollowUp: (idea: string) => void;
+}) {
   return (
     <section className="mx-auto w-full max-w-5xl space-y-7 px-3 pb-32 pt-6 md:pb-10 md:pt-12">
       <div>
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-4xl font-black tracking-[-0.04em] text-slate-950 md:text-5xl">AI와 대화</h1>
           <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-sm font-black text-emerald-700">1분 안에 전략 찾기</span>
+          <span className="rounded-full bg-slate-100 px-3 py-1.5 text-sm font-black text-slate-600">{Math.min(turn, maxTurns)}/{maxTurns}턴</span>
         </div>
-        <p className="mt-3 text-base font-semibold text-slate-500">추천 매매가 아니라, 조건식 DB에서 관찰식을 빠르게 찾아드립니다.</p>
+        <p className="mt-3 text-base font-semibold text-slate-500">Qwen은 말을 정리하고, 후보 선택은 80개 조건식 DB 기준으로 가볍게 끝냅니다.</p>
       </div>
 
-      <div className="flex justify-end">
-        <div className="max-w-xl rounded-[1.3rem] bg-emerald-50 px-5 py-4 text-sm font-bold leading-6 text-slate-800 shadow-sm">
-          5일선 20일선 골든크로스 전략 찾아줘
-          <span className="ml-3 text-xs text-slate-400">오전 10:42</span>
-        </div>
+      <div className="space-y-4">
+        {conversationMessages.map((message, index) => (
+          <div key={`${message.role}-${index}`} className={`flex ${message.role === "user" ? "justify-end" : "items-start gap-3"}`}>
+            {message.role === "assistant" ? (
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-sm font-black text-white">식</span>
+            ) : null}
+            <div
+              className={`max-w-2xl rounded-[1.3rem] px-5 py-4 text-sm font-bold leading-6 shadow-sm ${
+                message.role === "user"
+                  ? "bg-emerald-50 text-slate-800"
+                  : "border border-slate-200 bg-white text-slate-700"
+              }`}
+            >
+              {message.text}
+              {message.provider === "qwen" ? (
+                <span className="ml-2 rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-black text-emerald-700">Qwen</span>
+              ) : null}
+            </div>
+          </div>
+        ))}
       </div>
 
-      <div className="flex items-start gap-3">
-        <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-sm font-black text-white">식</span>
-        <div className="max-w-2xl rounded-[1.3rem] border border-slate-200 bg-white px-5 py-4 text-sm font-bold leading-6 text-slate-700 shadow-sm">
-          {aiAnswer || "네. 유사한 전략을 80개 조건식 DB에서 찾았습니다. 아래 3가지를 먼저 확인하세요."}
-          {aiProvider === "qwen" ? <span className="ml-2 rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-black text-emerald-700">Qwen</span> : null}
-          <span className="ml-3 text-xs text-slate-400">오전 10:42</span>
+      {followUpOptions.length > 0 ? (
+        <div className="rounded-[1.5rem] border border-emerald-200 bg-emerald-50/70 p-5">
+          <p className="text-sm font-black text-emerald-900">{followUpQuestion || "한 번만 더 좁혀주세요."}</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {followUpOptions.map((option) => (
+              <button
+                key={option}
+                type="button"
+                className="rounded-full bg-white px-4 py-2 text-sm font-black text-emerald-700 shadow-sm ring-1 ring-emerald-200"
+                onClick={() => onSelectFollowUp(option)}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      ) : null}
 
       <div>
         <p className="text-sm font-black text-slate-950">AI 추천 전략 3개</p>
-        <p className="mt-1 text-sm font-semibold text-slate-500">유사도와 실제 활용도를 기준으로 정렬했습니다.</p>
+        <p className="mt-1 text-sm font-semibold text-slate-500">80개 조건식 DB에서 점수가 높은 후보만 보여줍니다.</p>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
@@ -508,45 +597,49 @@ function ChatStage({ aiAnswer, aiProvider, onSelect }: { aiAnswer: string; aiPro
             key={candidate.title}
             type="button"
             className={`rounded-[1.5rem] border bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
-              candidate.active ? "border-emerald-500 ring-4 ring-emerald-50" : "border-slate-200"
+              candidates[0]?.id === candidate.id ? "border-emerald-500 ring-4 ring-emerald-50" : "border-slate-200"
             }`}
-            onClick={onSelect}
+            onClick={() => onSelect(candidate)}
           >
             <div className="flex items-center justify-between gap-3">
-              <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700">{candidate.label}</span>
-              {candidate.active ? <span className="rounded-full bg-emerald-500 px-2 py-1 text-xs font-black text-white">BEST</span> : null}
+              <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700">{`추천 ${candidates.findIndex((item) => item.id === candidate.id) + 1}`}</span>
+              {candidates[0]?.id === candidate.id ? <span className="rounded-full bg-emerald-500 px-2 py-1 text-xs font-black text-white">BEST</span> : null}
             </div>
             <h2 className="mt-5 min-h-[4rem] text-2xl font-black leading-tight tracking-[-0.03em] text-slate-950">{candidate.title}</h2>
             <div className="my-5 h-px bg-slate-100" />
             <p className="text-xs font-black text-slate-500">한 줄 설명</p>
-            <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">{candidate.summary}</p>
+            <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">{candidate.plainKorean}</p>
             <p className="mt-4 text-xs font-black text-slate-500">쓰는 상황</p>
-            <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">{candidate.situation}</p>
+            <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">{candidate.whyUse}</p>
             <div className="mt-5 flex items-center justify-between">
-              <span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-black text-slate-600">난이도 {candidate.difficulty}</span>
+              <span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-black text-slate-600">{difficultyLabel(candidate.difficulty)}</span>
               <span className="text-sm font-black text-emerald-700">전략 카드로 정리 →</span>
             </div>
           </button>
         ))}
       </div>
 
-      <button
-        type="button"
-        className="ml-auto flex w-full max-w-md items-center justify-center gap-3 rounded-2xl bg-emerald-600 px-5 py-4 text-base font-black text-white shadow-lg shadow-emerald-200 transition hover:bg-emerald-700"
-        onClick={onSelect}
-      >
-        선택한 전략 카드로 정리
-        <span>→</span>
-      </button>
+      {candidates[0] ? (
+        <button
+          type="button"
+          className="ml-auto flex w-full max-w-md items-center justify-center gap-3 rounded-2xl bg-emerald-600 px-5 py-4 text-base font-black text-white shadow-lg shadow-emerald-200 transition hover:bg-emerald-700"
+          onClick={() => onSelect(candidates[0])}
+        >
+          선택한 전략 카드로 정리
+          <span>→</span>
+        </button>
+      ) : null}
     </section>
   );
 }
 
 function StrategyCardStage({
+  strategy,
   previousLabel,
   onBack,
   onApply,
 }: {
+  strategy: StrategyCardType;
   previousLabel: string;
   onBack: () => void;
   onApply: () => void;
@@ -564,22 +657,20 @@ function StrategyCardStage({
           <span className="rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-black text-emerald-700">선택 완료</span>
         </div>
         <h2 className="mt-5 text-4xl font-black leading-tight tracking-[-0.05em] text-slate-950 md:text-6xl">
-          <span className="text-emerald-600">5·20선 골든크로스</span> + 거래량 회복
+          {strategy.title}
         </h2>
-        <p className="mt-4 text-base font-semibold text-slate-500">이평선 상향 교차 뒤 거래량이 회복되는 구간을 빠르게 관찰할 때 쓰는 전략식입니다.</p>
+        <p className="mt-4 text-base font-semibold text-slate-500">{strategy.summary}</p>
       </div>
 
       <div className="grid gap-5 rounded-[1.7rem] border border-slate-200 bg-white p-5 shadow-sm xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="divide-y divide-slate-100">
-          <CardRow icon="◎" label="전략 목적" body="돌파 관찰 / 종가베팅 보조 / 눌림 후 재상승 확인" />
+          <CardRow icon="◎" label="전략 목적" body={strategy.suitableRegime.join(" / ")} />
           <CardRow
             icon="▶"
             label="관찰 시작 조건"
             body={
               <ul className="space-y-2">
-                <li>5일선이 20일선을 상향 돌파</li>
-                <li>현재 거래량이 최근 평균 거래량보다 증가</li>
-                <li>양봉 마감</li>
+                {strategy.conditions.entry.slice(0, 3).map((item) => <li key={item}>{item}</li>)}
               </ul>
             }
           />
@@ -588,30 +679,27 @@ function StrategyCardStage({
             label="관찰 종료 조건"
             body={
               <ul className="space-y-2">
-                <li>5일선이 20일선 아래로 재이탈</li>
-                <li>또는 10봉 경과</li>
+                {strategy.conditions.exit.slice(0, 3).map((item) => <li key={item}>{item}</li>)}
               </ul>
             }
           />
-          <CardRow icon="▥" label="적용 시장" body="국장 단타 / 스윙 초입 / 거래량 붙는 종목 관찰" />
-          <CardRow icon="ⓘ" label="한 줄 요약" body="복잡한 조건식을 카드로 정리해 바로 적용할 수 있습니다." />
+          <CardRow icon="▥" label="적용 시장" body={strategy.conditions.universe.slice(0, 2).join(" / ")} />
+          <CardRow icon="ⓘ" label="한 줄 요약" body={strategy.validationIdea} />
 
           <div className="flex flex-wrap gap-3 py-5">
-            <Pill label="난이도" value="중간" />
-            <Pill label="활용도" value="높음" />
-            <Pill label="추천 상황" value="거래량 회복 구간" tone="amber" />
+            <Pill label="난이도" value={difficultyFromStrategy(strategy)} />
+            <Pill label="활용도" value={strategy.strategyType === "dayTrading" || strategy.strategyType === "breakout" ? "높음" : "보통"} />
+            <Pill label="추천 상황" value={strategy.suitableRegime[0] || "조건 확인 구간"} tone="amber" />
           </div>
         </div>
 
         <aside className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
           <p className="text-sm font-black text-slate-700">전략 미리보기</p>
           <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-white p-3">
-            <MiniPreviewChart />
+            <MiniPreviewChart labels={strategy.conditions.entry.slice(0, 2)} />
           </div>
           <ul className="mt-4 space-y-3 text-sm font-bold text-slate-600">
-            <li>✓ 5일선 &gt; 20일선 상향 교차</li>
-            <li>✓ 거래량 회복 확인</li>
-            <li>✓ 양봉 마감 관찰</li>
+            {strategy.conditions.entry.slice(0, 3).map((item) => <li key={item}>✓ {item}</li>)}
           </ul>
           <button
             type="button"
@@ -652,6 +740,18 @@ function StrategyCardStage({
   );
 }
 
+function difficultyLabel(difficulty: AssistantCandidate["difficulty"]) {
+  if (difficulty === "easy") return "난이도 쉬움";
+  if (difficulty === "medium") return "난이도 중간";
+  return "난이도 높음";
+}
+
+function difficultyFromStrategy(strategy: StrategyCardType) {
+  if (strategy.strategyType === "breakout" || strategy.strategyType === "dayTrading") return "중간";
+  if (strategy.strategyType === "meanReversion") return "쉬움";
+  return "보통";
+}
+
 function StepItem({ index, title, body }: { index: string; title: string; body: string }) {
   return (
     <div className="flex items-start gap-3">
@@ -689,7 +789,7 @@ function Pill({ label, value, tone = "emerald" }: { label: string; value: string
   );
 }
 
-function MiniPreviewChart() {
+function MiniPreviewChart({ labels }: { labels: string[] }) {
   return (
     <div className="relative aspect-[1.35] overflow-hidden rounded-lg bg-white">
       <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(148,163,184,0.16)_1px,transparent_1px),linear-gradient(180deg,rgba(148,163,184,0.16)_1px,transparent_1px)] bg-[size:42px_34px]" />
@@ -702,8 +802,8 @@ function MiniPreviewChart() {
         <rect x="168" y="82" width="10" height="81" fill="#10b981" />
         <rect x="230" y="56" width="10" height="107" fill="#10b981" />
       </svg>
-      <span className="absolute bottom-10 right-8 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-black text-white shadow">골든크로스</span>
-      <span className="absolute bottom-3 right-8 rounded-lg bg-blue-500 px-3 py-2 text-xs font-black text-white shadow">거래량 회복</span>
+      <span className="absolute bottom-10 right-8 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-black text-white shadow">{labels[0] || "시작 조건"}</span>
+      <span className="absolute bottom-3 right-8 rounded-lg bg-blue-500 px-3 py-2 text-xs font-black text-white shadow">{labels[1] || "보조 조건"}</span>
     </div>
   );
 }

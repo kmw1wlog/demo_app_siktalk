@@ -1,10 +1,29 @@
-import { fetchHynixChartSnapshot } from "@/lib/kis-minute-chart";
+import { fetchHynixChartSnapshot, type ChartInterval } from "@/lib/kis-minute-chart";
+
+function parseInterval(value: string | null): ChartInterval {
+  if (value === "1m" || value === "15m" || value === "1d") {
+    return value;
+  }
+  return "15m";
+}
 
 export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
-    const threshold = Number(url.searchParams.get("strengthThreshold") || "99");
-    const snapshot = await fetchHynixChartSnapshot(180, Number.isFinite(threshold) ? threshold : 99);
+    const interval = parseInterval(url.searchParams.get("interval"));
+    const count = Number(url.searchParams.get("count") || "80");
+    const beforeDate = url.searchParams.get("beforeDate");
+    const beforeTime = url.searchParams.get("beforeTime");
+    const includeExecutionStrength = url.searchParams.get("includeExecutionStrength") !== "0";
+
+    const snapshot = await fetchHynixChartSnapshot({
+      interval,
+      count: Number.isFinite(count) ? count : 80,
+      beforeDate,
+      beforeTime,
+      includeExecutionStrength,
+    });
+
     return Response.json({
       ok: true,
       snapshot,

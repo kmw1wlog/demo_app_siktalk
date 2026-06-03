@@ -10,11 +10,9 @@ type BaseCandle = {
   volume: number;
 };
 
-export type HynixChartCandle = BaseCandle & {
-  ma5: number | null;
-  ma20: number | null;
-  volumeMa20: number | null;
-};
+export type ChartInterval = "1m" | "15m" | "1d";
+
+export type HynixChartCandle = BaseCandle;
 
 export type HynixConditionMarker = {
   time: number;
@@ -28,16 +26,15 @@ export type HynixChartSnapshot = {
   name: "SK하이닉스";
   source: "kis";
   basis: string;
+  interval: ChartInterval;
   updatedAt: string | null;
   candles: HynixChartCandle[];
-  latestClose: number | null;
-  latestMa5: number | null;
-  latestMa20: number | null;
-  latestVolumeMa20: number | null;
-  executionStrength: KiwoomExecutionStrength;
   markers: HynixConditionMarker[];
-  lastBullishCrossTime: number | null;
-  lastBullishCrossPrice: number | null;
+  executionStrength: KiwoomExecutionStrength;
+  latestClose: number | null;
+  nextCursorDate: string | null;
+  nextCursorTime: string | null;
+  hasMoreHistory: boolean;
 };
 
 type CandleCacheEntry = {
@@ -51,8 +48,26 @@ type KisChartResponse = {
   output2?: Array<Record<string, string>>;
 };
 
-const MINUTE_ENDPOINT = "/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice";
-const MINUTE_TR_ID = "FHKST03010200";
+type FetchChartOptions = {
+  interval: ChartInterval;
+  count: number;
+  beforeDate?: string | null;
+  beforeTime?: string | null;
+  includeExecutionStrength?: boolean;
+};
+
+type FetchRawResult = {
+  candles: BaseCandle[];
+  nextCursorDate: string | null;
+  nextCursorTime: string | null;
+  hasMoreHistory: boolean;
+  basis: string;
+};
+
+const MINUTE_ENDPOINT = "/uapi/domestic-stock/v1/quotations/inquire-time-dailychartprice";
+const MINUTE_TR_ID = "FHKST03010230";
+const DAILY_ENDPOINT = "/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice";
+const DAILY_TR_ID = "FHKST03010100";
 const HYNIX_SYMBOL = "000660";
 const HYNIX_NAME = "SK하이닉스";
 
@@ -94,6 +109,7 @@ function clampMinuteAnchorCursor() {
     previous.setHours(15, 30, 0, 0);
     return previous;
   }
+
   if (hour > 15 || (hour === 15 && minute > 30)) {
     const current = new Date(kst);
     current.setHours(15, 30, 0, 0);
@@ -113,18 +129,23 @@ function subtractOneMinute(dateText: string, timeText: string) {
   return kstDateParts(cursor);
 }
 
-async function fetchMinutePage(_anchorDate: string, anchorTime: string) {
+function subtractBusinessDays(dateText: string, days: number) {
+  const cursor = new Date(`${dateText.slice(0, 4)}-${dateText.slice(4, 6)}-${dateText.slice(6, 8)}T12:00:00+09:00`);
+  let remaining = days;
+  while (remaining > 0) {
+    cursor.setDate(cursor.getDate() - 1);
+    if (cursor.getDay() === 0 || cursor.getDay() === 6) {
+      continue;
+    }
+    remaining -= 1;
+  }
+  return kstDateParts(cursor).date;
+}
+
+async function fetchChartPage(endpoint: string, trId: string, params: Record<string, string>) {
   const { appkey, appsecret, baseUrl } = getKisCredentials();
   const token = await getKisAccessToken();
-  const url = new URL(`${baseUrl}${MINUTE_ENDPOINT}`);
-
-  const params = {
-    FID_ETC_CLS_CODE: "",
-    FID_COND_MRKT_DIV_CODE: "J",
-    FID_INPUT_ISCD: HYNIX_SYMBOL,
-    FID_INPUT_HOUR_1: anchorTime,
-    FID_PW_DATA_INCU_YN: "N",
-  };
+  const url = new URL(`${baseUrl}${endpoint}`);
 
   for (const [key, value] of Object.entries(params)) {
     url.searchParams.set(key, value);
@@ -135,7 +156,7 @@ async function fetchMinutePage(_anchorDate: string, anchorTime: string) {
       authorization: `Bearer ${token}`,
       appkey,
       appsecret,
-      tr_id: MINUTE_TR_ID,
+      tr_id: trId,
       custtype: "P",
     },
     cache: "no-store",
@@ -143,7 +164,7 @@ async function fetchMinutePage(_anchorDate: string, anchorTime: string) {
 
   const data = (await response.json()) as KisChartResponse;
   if (!response.ok || (data.rt_cd && data.rt_cd !== "0")) {
-    throw new Error(data.msg1 || `KIS minute chart failed: HTTP ${response.status}`);
+    throw new Error(data.msg1 || `KIS chart failed: HTTP ${response.status}`);
   }
 
   return data.output2 ?? [];
@@ -170,171 +191,203 @@ function minuteRowToCandle(row: Record<string, string>): BaseCandle | null {
   };
 }
 
-// Adapted from TradingView Lightweight Charts moving-average examples:
-// https://github.com/tradingview/lightweight-charts
-function appendMovingAverages(candles: BaseCandle[]): HynixChartCandle[] {
-  return candles.map((candle, index) => ({
-    ...candle,
-    ma5: movingAverage(candles, index, 5),
-    ma20: movingAverage(candles, index, 20),
-    volumeMa20: volumeAverage(candles, index, 20),
-  }));
+function dailyRowToCandle(row: Record<string, string>): BaseCandle | null {
+  const dateText = row.stck_bsop_date;
+  const close = Number(row.stck_clpr || row.stck_prpr || 0);
+
+  if (!dateText || !Number.isFinite(close) || close <= 0) {
+    return null;
+  }
+
+  const iso = `${dateText.slice(0, 4)}-${dateText.slice(4, 6)}-${dateText.slice(6, 8)}T00:00:00+09:00`;
+
+  return {
+    time: Math.floor(new Date(iso).getTime() / 1000),
+    open: Number(row.stck_oprc || close),
+    high: Number(row.stck_hgpr || close),
+    low: Number(row.stck_lwpr || close),
+    close,
+    volume: Number(row.acml_vol || 0),
+  };
+}
+
+function uniqueCandles(candles: BaseCandle[]) {
+  const seen = new Set<number>();
+  return candles.filter((candle) => {
+    if (seen.has(candle.time)) {
+      return false;
+    }
+    seen.add(candle.time);
+    return true;
+  });
+}
+
+function floorToQuarterHour(epochSeconds: number) {
+  const date = new Date(epochSeconds * 1000);
+  const minute = date.getMinutes();
+  const flooredMinute = minute - (minute % 15);
+  date.setMinutes(flooredMinute, 0, 0);
+  return Math.floor(date.getTime() / 1000);
+}
+
+function aggregateTo15Minute(candles: BaseCandle[]) {
+  const grouped = new Map<number, BaseCandle>();
+
+  for (const candle of candles) {
+    const bucket = floorToQuarterHour(candle.time);
+    const current = grouped.get(bucket);
+
+    if (!current) {
+      grouped.set(bucket, {
+        time: bucket,
+        open: candle.open,
+        high: candle.high,
+        low: candle.low,
+        close: candle.close,
+        volume: candle.volume,
+      });
+      continue;
+    }
+
+    current.high = Math.max(current.high, candle.high);
+    current.low = Math.min(current.low, candle.low);
+    current.close = candle.close;
+    current.volume += candle.volume;
+  }
+
+  return Array.from(grouped.values()).sort((left, right) => left.time - right.time);
 }
 
 function movingAverage(candles: BaseCandle[], index: number, length: number) {
   if (index < length - 1) {
     return null;
   }
+
   let sum = 0;
   for (let cursor = index - length + 1; cursor <= index; cursor += 1) {
     sum += candles[cursor].close;
   }
-  return Math.round((sum / length) * 100) / 100;
+
+  return sum / length;
 }
 
 function volumeAverage(candles: BaseCandle[], index: number, length: number) {
   if (index < length - 1) {
     return null;
   }
+
   let sum = 0;
   for (let cursor = index - length + 1; cursor <= index; cursor += 1) {
     sum += candles[cursor].volume;
   }
-  return Math.round((sum / length) * 100) / 100;
+
+  return sum / length;
 }
 
-function findLastBullishCross(candles: HynixChartCandle[]) {
-  for (let index = candles.length - 1; index >= 1; index -= 1) {
-    const prev = candles[index - 1];
-    const current = candles[index];
+function hasVolumeRecovery(candles: BaseCandle[], index: number) {
+  const volumeMa20 = volumeAverage(candles, index, 20);
+  if (!volumeMa20) {
+    return false;
+  }
 
-    if (prev.ma5 === null || prev.ma20 === null || current.ma5 === null || current.ma20 === null) {
+  const previousWindow = candles.slice(Math.max(0, index - 10), index);
+  const compressed = previousWindow.some((_, windowIndex) => {
+    const targetIndex = Math.max(0, index - 10) + windowIndex;
+    const avg = volumeAverage(candles, targetIndex, 20);
+    return avg !== null && candles[targetIndex].volume < avg * 0.8;
+  });
+
+  return compressed && candles[index].volume >= volumeMa20;
+}
+
+function buildConditionMarkers(candles: BaseCandle[]) {
+  const markers: HynixConditionMarker[] = [];
+
+  for (let index = 1; index < candles.length; index += 1) {
+    const prevMa5 = movingAverage(candles, index - 1, 5);
+    const prevMa20 = movingAverage(candles, index - 1, 20);
+    const currentMa5 = movingAverage(candles, index, 5);
+    const currentMa20 = movingAverage(candles, index, 20);
+
+    if (prevMa5 === null || prevMa20 === null || currentMa5 === null || currentMa20 === null) {
       continue;
     }
 
-    if (prev.ma5 <= prev.ma20 && current.ma5 > current.ma20) {
-      return {
-        time: current.time,
-        price: current.close,
-      };
-    }
-  }
-  return {
-    time: null,
-    price: null,
-  };
-}
+    const bullishCross = prevMa5 <= prevMa20 && currentMa5 > currentMa20;
+    const bearishCross = prevMa5 >= prevMa20 && currentMa5 < currentMa20;
 
-function hasVolumeRecovery(candles: HynixChartCandle[], index: number) {
-  const current = candles[index];
-  if (!current?.volumeMa20) return false;
-
-  const previousWindow = candles.slice(Math.max(0, index - 10), index);
-  const compressed = previousWindow.some((candle) => candle.volumeMa20 !== null && candle.volume < candle.volumeMa20 * 0.8);
-  return compressed && current.volume >= current.volumeMa20 * 0.7;
-}
-
-function buildConditionMarkers(candles: HynixChartCandle[], executionStrength: KiwoomExecutionStrength, strengthThreshold: number): HynixConditionMarker[] {
-  const markers: HynixConditionMarker[] = [];
-  const strengthOk = (executionStrength.value ?? 0) >= strengthThreshold;
-
-  for (let index = 1; index < candles.length; index += 1) {
-    const prev = candles[index - 1];
-    const current = candles[index];
-
-    if (prev.ma5 !== null && prev.ma20 !== null && current.ma5 !== null && current.ma20 !== null) {
-      const bullishCross = prev.ma5 <= prev.ma20 && current.ma5 > current.ma20;
-      const bearishCross = prev.ma5 >= prev.ma20 && current.ma5 < current.ma20;
-
-      if (bullishCross && strengthOk && hasVolumeRecovery(candles, index)) {
-        markers.push({
-          time: current.time,
-          price: current.close,
-          type: "start",
-          label: "시작 조건",
-        });
-      }
-
-      if (bearishCross) {
-        markers.push({
-          time: current.time,
-          price: current.close,
-          type: "end",
-          label: "종료 조건",
-        });
-      }
-    }
-  }
-
-  if (!markers.some((marker) => marker.type === "start")) {
-    const fallback = findLastBullishCross(candles);
-    if (fallback.time && fallback.price) {
+    if (bullishCross && hasVolumeRecovery(candles, index) && candles[index].close >= candles[index].open) {
       markers.push({
-        time: fallback.time,
-        price: fallback.price,
+        time: candles[index].time,
+        price: candles[index].low,
         type: "start",
-        label: "시작 조건",
+        label: "진입",
+      });
+    }
+
+    if (bearishCross || candles[index].close < currentMa20) {
+      markers.push({
+        time: candles[index].time,
+        price: candles[index].high,
+        type: "end",
+        label: "종료",
       });
     }
   }
 
-  return markers.slice(-8);
+  return markers;
 }
 
-export async function fetchHynixChartSnapshot(lookbackMinutes = 180, strengthThreshold = 99): Promise<HynixChartSnapshot> {
-  try {
-    return await fetchHynixChartSnapshotLive(lookbackMinutes, strengthThreshold);
-  } catch {
-    return buildFallbackSnapshot(lookbackMinutes, strengthThreshold);
-  }
-}
+async function fetchMinuteCandlesChunk(targetCount: number, beforeDate?: string | null, beforeTime?: string | null): Promise<FetchRawResult> {
+  const anchor = beforeDate && beforeTime
+    ? { date: beforeDate, hourMinuteSecond: beforeTime }
+    : kstDateParts(clampMinuteAnchorCursor());
 
-async function fetchHynixChartSnapshotLive(lookbackMinutes = 180, strengthThreshold = 99): Promise<HynixChartSnapshot> {
-  const cacheKey = `${lookbackMinutes}:${strengthThreshold}`;
-  const cached = chartCache.get(cacheKey);
-  if (cached && cached.expiresAt > Date.now()) {
-    return cached.snapshot;
-  }
-
-  const anchor = clampMinuteAnchorCursor();
-  let anchorParts = kstDateParts(anchor);
-  let remaining = Math.max(lookbackMinutes, 60);
+  let anchorParts = anchor;
   const rows: BaseCandle[] = [];
   const seen = new Set<string>();
   let emptyPages = 0;
 
-  while (remaining > 0) {
-    const pageRows = await fetchMinutePage(anchorParts.date, anchorParts.hourMinuteSecond);
+  while (rows.length < targetCount) {
+    const pageRows = await fetchChartPage(MINUTE_ENDPOINT, MINUTE_TR_ID, {
+      FID_COND_MRKT_DIV_CODE: "J",
+      FID_INPUT_ISCD: HYNIX_SYMBOL,
+      FID_INPUT_HOUR_1: anchorParts.hourMinuteSecond,
+      FID_INPUT_DATE_1: anchorParts.date,
+      FID_PW_DATA_INCU_YN: "Y",
+      FID_FAKE_TICK_INCU_YN: "N",
+    });
 
     if (!pageRows.length) {
       emptyPages += 1;
       if (emptyPages >= 2) {
         break;
       }
-      const previous = previousBusinessDay(
-        new Date(`${anchorParts.date.slice(0, 4)}-${anchorParts.date.slice(4, 6)}-${anchorParts.date.slice(6, 8)}T12:00:00+09:00`),
-      );
+
+      const previous = previousBusinessDay(new Date(`${anchorParts.date.slice(0, 4)}-${anchorParts.date.slice(4, 6)}-${anchorParts.date.slice(6, 8)}T12:00:00+09:00`));
       previous.setHours(15, 30, 0, 0);
       anchorParts = kstDateParts(previous);
       continue;
     }
 
     emptyPages = 0;
+
     for (const row of pageRows) {
       const candle = minuteRowToCandle(row);
       if (!candle) {
         continue;
       }
+
       const uniqueKey = `${row.stck_bsop_date}-${row.stck_cntg_hour}`;
       if (seen.has(uniqueKey)) {
         continue;
       }
+
       seen.add(uniqueKey);
       rows.push(candle);
     }
 
-    remaining -= pageRows.length;
-    if (rows.length >= lookbackMinutes) {
+    if (rows.length >= targetCount) {
       break;
     }
 
@@ -346,49 +399,79 @@ async function fetchHynixChartSnapshotLive(lookbackMinutes = 180, strengthThresh
     anchorParts = subtractOneMinute(last.stck_bsop_date, String(last.stck_cntg_hour).padStart(6, "0"));
   }
 
-  rows.sort((left, right) => left.time - right.time);
-  const candles = appendMovingAverages(rows.slice(-lookbackMinutes));
-  const executionStrength = await fetchKiwoomExecutionStrength();
-  const latest = candles.at(-1) || null;
-  const lastBullishCross = findLastBullishCross(candles);
-  const markers = buildConditionMarkers(candles, executionStrength, strengthThreshold);
+  const sorted = uniqueCandles(rows).sort((left, right) => left.time - right.time);
+  const trimmed = sorted.slice(-targetCount);
+  const oldest = trimmed[0];
+  const nextCursor = oldest ? subtractOneMinute(epochToKstDate(oldest.time), epochToKstTime(oldest.time)) : null;
 
-  const snapshot: HynixChartSnapshot = {
-    symbol: HYNIX_SYMBOL,
-    name: HYNIX_NAME,
-    source: "kis",
-    basis: "KIS 실시간 분봉 기준",
-    updatedAt: new Date().toISOString(),
-    candles,
-    latestClose: latest?.close ?? null,
-    latestMa5: latest?.ma5 ?? null,
-    latestMa20: latest?.ma20 ?? null,
-    latestVolumeMa20: latest?.volumeMa20 ?? null,
-    executionStrength,
-    markers,
-    lastBullishCrossTime: lastBullishCross.time,
-    lastBullishCrossPrice: lastBullishCross.price,
+  return {
+    candles: trimmed,
+    nextCursorDate: nextCursor?.date ?? null,
+    nextCursorTime: nextCursor?.hourMinuteSecond ?? null,
+    hasMoreHistory: Boolean(nextCursor),
+    basis: "KIS 실데이터 기준",
   };
-
-  chartCache.set(cacheKey, {
-    snapshot,
-    expiresAt: Date.now() + 45_000,
-  });
-
-  return snapshot;
 }
 
-function buildFallbackSnapshot(lookbackMinutes: number, strengthThreshold: number): HynixChartSnapshot {
-  const baseCandles = Array.from({ length: lookbackMinutes }, (_, index) => {
+async function fetchDailyCandlesChunk(targetCount: number, beforeDate?: string | null): Promise<FetchRawResult> {
+  const endDate = beforeDate ? subtractBusinessDays(beforeDate, 1) : kstDateParts(nowKst()).date;
+  const startDate = subtractBusinessDays(endDate, Math.max(targetCount * 3, 120));
+
+  const pageRows = await fetchChartPage(DAILY_ENDPOINT, DAILY_TR_ID, {
+    FID_COND_MRKT_DIV_CODE: "J",
+    FID_INPUT_ISCD: HYNIX_SYMBOL,
+    FID_INPUT_DATE_1: startDate,
+    FID_INPUT_DATE_2: endDate,
+    FID_PERIOD_DIV_CODE: "D",
+    FID_ORG_ADJ_PRC: "1",
+  });
+
+  const rows = pageRows.map(dailyRowToCandle).filter((candle): candle is BaseCandle => Boolean(candle)).reverse();
+  const trimmed = rows.slice(-targetCount);
+  const oldest = trimmed[0];
+  const nextCursorDate = oldest ? subtractBusinessDays(epochToKstDate(oldest.time), 1) : null;
+
+  return {
+    candles: trimmed,
+    nextCursorDate,
+    nextCursorTime: null,
+    hasMoreHistory: rows.length >= targetCount && Boolean(nextCursorDate),
+    basis: "KIS 실데이터 기준",
+  };
+}
+
+function epochToKstDate(epochSeconds: number) {
+  const date = new Date(epochSeconds * 1000);
+  return kstDateParts(new Date(date.toLocaleString("en-US", { timeZone: "Asia/Seoul" }))).date;
+}
+
+function epochToKstTime(epochSeconds: number) {
+  const date = new Date(epochSeconds * 1000);
+  return kstDateParts(new Date(date.toLocaleString("en-US", { timeZone: "Asia/Seoul" }))).hourMinuteSecond;
+}
+
+function buildCacheKey(options: FetchChartOptions) {
+  return [
+    options.interval,
+    options.count,
+    options.beforeDate || "",
+    options.beforeTime || "",
+    options.includeExecutionStrength ? "1" : "0",
+  ].join(":");
+}
+
+function buildFallbackCandles(interval: ChartInterval, count: number) {
+  const stepSeconds = interval === "1d" ? 86_400 : interval === "15m" ? 900 : 60;
+  return Array.from({ length: count }, (_, index) => {
     const wave = Math.sin(index / 7) * 1800;
-    const trend = index * 65;
+    const trend = index * (interval === "1d" ? 110 : 45);
     const open = Math.round(185000 + trend + wave);
     const close = Math.round(open + Math.cos(index / 3) * 900 + (index % 4 === 0 ? 600 : -200));
     const high = Math.max(open, close) + 1100;
     const low = Math.min(open, close) - 1000;
     const volume = Math.round(90000 + index * 2500 + Math.abs(Math.sin(index / 5) * 45000));
     return {
-      time: Math.floor(Date.now() / 1000) - (lookbackMinutes - index) * 60,
+      time: Math.floor(Date.now() / 1000) - (count - index) * stepSeconds,
       open,
       high,
       low,
@@ -396,38 +479,99 @@ function buildFallbackSnapshot(lookbackMinutes: number, strengthThreshold: numbe
       volume,
     };
   });
+}
 
-  const candles = appendMovingAverages(baseCandles);
-  const executionStrength: KiwoomExecutionStrength = {
-    source: "kiwoom",
-    symbol: HYNIX_SYMBOL,
-    value: 103.4,
-    value5m: 101.2,
-    value20m: 99.8,
-    value60m: 98.4,
-    currentPrice: candles.at(-1)?.close ?? null,
-    updatedAt: new Date().toISOString(),
-    authenticated: false,
-    message: "실데이터 인증 전이라 데모 차트로 표시합니다.",
-  };
-  const lastBullishCross = findLastBullishCross(candles);
-  const markers = buildConditionMarkers(candles, executionStrength, strengthThreshold);
-  const latest = candles.at(-1) || null;
+export async function fetchHynixChartSnapshot(options: FetchChartOptions): Promise<HynixChartSnapshot> {
+  const count = Math.max(30, Math.min(options.count, 500));
+  const cacheKey = buildCacheKey({ ...options, count });
+  const cached = chartCache.get(cacheKey);
 
-  return {
-    symbol: HYNIX_SYMBOL,
-    name: HYNIX_NAME,
-    source: "kis",
-    basis: "데모 분봉 기준",
-    updatedAt: new Date().toISOString(),
-    candles,
-    latestClose: latest?.close ?? null,
-    latestMa5: latest?.ma5 ?? null,
-    latestMa20: latest?.ma20 ?? null,
-    latestVolumeMa20: latest?.volumeMa20 ?? null,
-    executionStrength,
-    markers,
-    lastBullishCrossTime: lastBullishCross.time,
-    lastBullishCrossPrice: lastBullishCross.price,
-  };
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.snapshot;
+  }
+
+  try {
+    const includeExecutionStrength = options.includeExecutionStrength ?? true;
+    let rawResult: FetchRawResult;
+
+    if (options.interval === "1d") {
+      rawResult = await fetchDailyCandlesChunk(count, options.beforeDate);
+    } else if (options.interval === "15m") {
+      const minuteResult = await fetchMinuteCandlesChunk(count * 15, options.beforeDate, options.beforeTime);
+      rawResult = {
+        ...minuteResult,
+        candles: aggregateTo15Minute(minuteResult.candles).slice(-count),
+      };
+    } else {
+      rawResult = await fetchMinuteCandlesChunk(count, options.beforeDate, options.beforeTime);
+    }
+
+    const candles = rawResult.candles;
+    const markers = buildConditionMarkers(candles);
+    const executionStrength = includeExecutionStrength
+      ? await fetchKiwoomExecutionStrength()
+      : {
+          source: "kiwoom" as const,
+          symbol: "000660" as const,
+          value: null,
+          value5m: null,
+          value20m: null,
+          value60m: null,
+          currentPrice: null,
+          updatedAt: null,
+          authenticated: false,
+          message: "추가 로딩 구간은 체결강도를 다시 조회하지 않습니다.",
+        };
+
+    const snapshot: HynixChartSnapshot = {
+      symbol: HYNIX_SYMBOL,
+      name: HYNIX_NAME,
+      source: "kis",
+      basis: rawResult.basis,
+      interval: options.interval,
+      updatedAt: new Date().toISOString(),
+      candles,
+      markers,
+      executionStrength,
+      latestClose: candles.at(-1)?.close ?? null,
+      nextCursorDate: rawResult.nextCursorDate,
+      nextCursorTime: rawResult.nextCursorTime,
+      hasMoreHistory: rawResult.hasMoreHistory,
+    };
+
+    chartCache.set(cacheKey, {
+      snapshot,
+      expiresAt: Date.now() + (options.interval === "1d" ? 5 * 60_000 : 45_000),
+    });
+
+    return snapshot;
+  } catch {
+    const candles = buildFallbackCandles(options.interval, count);
+    return {
+      symbol: HYNIX_SYMBOL,
+      name: HYNIX_NAME,
+      source: "kis",
+      basis: "데모 차트 기준",
+      interval: options.interval,
+      updatedAt: new Date().toISOString(),
+      candles,
+      markers: buildConditionMarkers(candles),
+      executionStrength: {
+        source: "kiwoom",
+        symbol: "000660" as const,
+        value: null,
+        value5m: null,
+        value20m: null,
+        value60m: null,
+        currentPrice: candles.at(-1)?.close ?? null,
+        updatedAt: new Date().toISOString(),
+        authenticated: false,
+        message: "실데이터 연결에 실패해 데모 차트로 표시합니다.",
+      },
+      latestClose: candles.at(-1)?.close ?? null,
+      nextCursorDate: null,
+      nextCursorTime: null,
+      hasMoreHistory: false,
+    };
+  }
 }
