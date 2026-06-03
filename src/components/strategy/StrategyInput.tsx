@@ -12,6 +12,15 @@ import { trackEvent } from "@/lib/mixpanel";
 import { addEvent } from "@/lib/storage";
 import type { AssetClass, StrategyCard as StrategyCardType } from "@/lib/types";
 
+type AiStrategyChatResponse = {
+  ok?: boolean;
+  answer?: string;
+  provider?: "qwen" | "fallback";
+  model?: string;
+  fallbackUsed?: boolean;
+  error?: string;
+};
+
 const marketOptions: { label: string; value: AssetClass; hint: string }[] = [
   { label: "국장", value: "koreanStock", hint: "상따·종베·거래대금" },
   { label: "미장", value: "usStock", hint: "추세·ETF·뉴스" },
@@ -51,6 +60,8 @@ export function StrategyInput({
   const [rawIdea, setRawIdea] = useState(initialIdea);
   const [selectedMarket, setSelectedMarket] = useState<AssetClass>("koreanStock");
   const [strategy, setStrategy] = useState<StrategyCardType | null>(null);
+  const [aiAnswer, setAiAnswer] = useState("");
+  const [aiProvider, setAiProvider] = useState<"qwen" | "fallback" | "idle">("idle");
   const [showDemoPanel, setShowDemoPanel] = useState(false);
   const [demoView, setDemoView] = useState<"home" | "chat" | "card" | "chart">(initialView);
   const [previousDemoView, setPreviousDemoView] = useState<"chat" | "conditions">(initialSource);
@@ -116,12 +127,25 @@ export function StrategyInput({
       setError("전략 아이디어를 한 문장으로 적어주세요.");
       return;
     }
+    setLoading(true);
+    setError("");
     const demoIntent = isDemoStrategyQuestion(idea) || idea.includes("5일선 20일선") || idea.includes("5·20선");
     void trackEvent("AI Prompt Submitted", {
+      prompt_text: idea,
       input_length: idea.length,
       is_demo_intent: demoIntent,
       market: selectedMarket,
       source: ideaFromTemplate ? "chip" : "composer",
+    });
+    const aiResult = await requestAiChat(idea);
+    setAiAnswer(aiResult.answer);
+    setAiProvider(aiResult.provider);
+    void trackEvent("AI Prompt Answered", {
+      fallback_used: aiResult.fallbackUsed,
+      model: aiResult.model,
+      provider: aiResult.provider,
+      prompt_text: idea,
+      status: aiResult.error ? "fallback" : "success",
     });
     if (demoIntent) {
       const createdAt = new Date().toISOString();
@@ -144,10 +168,9 @@ export function StrategyInput({
         strategyType: nextStrategy.strategyType,
         createdAt,
       });
+      setLoading(false);
       return;
     }
-    setLoading(true);
-    setError("");
     setShowDemoPanel(false);
     try {
       const response = await fetch("/api/strategy/parse", {
@@ -209,7 +232,13 @@ export function StrategyInput({
           />
         ) : null}
 
-        {demoView === "chat" && strategy ? <ChatStage onSelect={() => selectDemoStrategy("chat")} /> : null}
+        {demoView === "chat" && strategy ? (
+          <ChatStage
+            aiAnswer={aiAnswer}
+            aiProvider={aiProvider}
+            onSelect={() => selectDemoStrategy("chat")}
+          />
+        ) : null}
 
         {demoView === "card" && strategy ? (
           <StrategyCardStage
@@ -385,7 +414,36 @@ function HomeStage({
   );
 }
 
-function ChatStage({ onSelect }: { onSelect: () => void }) {
+async function requestAiChat(rawIdea: string): Promise<Required<Pick<AiStrategyChatResponse, "answer" | "provider" | "fallbackUsed" | "model">> & { error?: string }> {
+  try {
+    const response = await fetch("/api/ai/strategy-chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rawIdea }),
+    });
+    const data = (await response.json()) as AiStrategyChatResponse;
+    if (!response.ok || !data.answer || !data.provider) {
+      throw new Error(data.error || "AI 응답을 만들지 못했습니다.");
+    }
+    return {
+      answer: data.answer,
+      provider: data.provider,
+      fallbackUsed: Boolean(data.fallbackUsed),
+      model: data.model || "unknown",
+      error: data.error,
+    };
+  } catch (error) {
+    return {
+      answer: "입력하신 문장을 조건식 후보로 정리했습니다. 관찰 시작, 관찰 종료, 차트 확인 순서로 카드에서 확인하세요.",
+      provider: "fallback",
+      fallbackUsed: true,
+      model: "fallback",
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+function ChatStage({ aiAnswer, aiProvider, onSelect }: { aiAnswer: string; aiProvider: "qwen" | "fallback" | "idle"; onSelect: () => void }) {
   const candidates = [
     {
       label: "추천 1",
@@ -433,7 +491,8 @@ function ChatStage({ onSelect }: { onSelect: () => void }) {
       <div className="flex items-start gap-3">
         <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-sm font-black text-white">식</span>
         <div className="max-w-2xl rounded-[1.3rem] border border-slate-200 bg-white px-5 py-4 text-sm font-bold leading-6 text-slate-700 shadow-sm">
-          네. 유사한 전략을 80개 조건식 DB에서 찾았습니다. 아래 3가지를 먼저 확인하세요.
+          {aiAnswer || "네. 유사한 전략을 80개 조건식 DB에서 찾았습니다. 아래 3가지를 먼저 확인하세요."}
+          {aiProvider === "qwen" ? <span className="ml-2 rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-black text-emerald-700">Qwen</span> : null}
           <span className="ml-3 text-xs text-slate-400">오전 10:42</span>
         </div>
       </div>

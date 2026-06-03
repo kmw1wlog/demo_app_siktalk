@@ -36,11 +36,11 @@ export function Sidebar() {
         <button
           type="button"
           onClick={() => router.push("/conditions")}
-          className="block w-full rounded-2xl bg-slate-950 p-5 text-left text-white"
+          className="block w-full rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-left text-emerald-950"
         >
-          <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-300">01</p>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">01</p>
           <p className="mt-2 text-base font-black leading-6">80개 조건식 DB 확인하기</p>
-          <p className="mt-3 text-xl font-black text-emerald-300">→</p>
+          <p className="mt-3 text-xl font-black text-emerald-700">→</p>
         </button>
         <button
           type="button"
@@ -53,10 +53,10 @@ export function Sidebar() {
           <p className="mt-2 text-base font-black leading-6">설문하고 앱AI쿠폰 + 트뷰 지표 받기</p>
           <p className="mt-3 text-xl font-black text-sky-300">→</p>
         </button>
-        <a href="/api/feedback/ebook" download className="block rounded-2xl bg-slate-950 p-5 text-white">
-          <p className="text-xs font-black uppercase tracking-[0.18em] text-amber-300">03</p>
+        <a href="/api/feedback/ebook" download className="block rounded-2xl border border-amber-200 bg-amber-50 p-5 text-amber-950">
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-amber-700">03</p>
           <p className="mt-2 text-base font-black leading-6">무료 영웅문 세팅 PDF 받기</p>
-          <p className="mt-3 text-xl font-black text-amber-300">→</p>
+          <p className="mt-3 text-xl font-black text-amber-700">→</p>
         </a>
         <Link href="/community" className="block border-t border-slate-200 pt-5 text-sm font-black text-slate-500">
           ? 도움말
