@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { assetClassLabel, timeframeLabel } from "@/lib/format";
-import { trackMixpanel } from "@/lib/mixpanel";
+import { markFeedbackSignal } from "@/lib/feedback-session";
+import { trackEvent } from "@/lib/mixpanel";
 import { platformCopyTabs, getPlatformCopy, type PlatformCopyTab } from "@/lib/platform-copies";
 import type { StrategyCard } from "@/lib/types";
 
@@ -24,7 +25,7 @@ export function PlatformCarryPanel({
   const activeCopy = getPlatformCopy(strategy, activeTab);
 
   useEffect(() => {
-    trackMixpanel("platform_tab_opened", {
+    void trackEvent("Platform Tab Opened", {
       compact,
       platform: activeTab,
       strategy_id: strategy.id,
@@ -36,7 +37,10 @@ export function PlatformCarryPanel({
     try {
       await navigator.clipboard.writeText(activeCopy);
       setStatus("현재 탭을 복사했습니다.");
-      trackMixpanel("platform_copy_clicked", {
+      if (activeTab === "tradingview") {
+        markFeedbackSignal("export_clicked", "/app:platform_carry");
+      }
+      void trackEvent(activeTab === "tradingview" ? "TradingView Export Clicked" : "Platform Copy Clicked", {
         copy_type: "tab_content",
         platform: activeTab,
         status: "success",
@@ -44,7 +48,7 @@ export function PlatformCarryPanel({
       });
     } catch {
       setStatus("복사에 실패했습니다. 내용을 직접 선택해 복사해주세요.");
-      trackMixpanel("platform_copy_clicked", {
+      void trackEvent(activeTab === "tradingview" ? "TradingView Export Clicked" : "Platform Copy Clicked", {
         copy_type: "tab_content",
         platform: activeTab,
         status: "failed",
@@ -73,7 +77,7 @@ export function PlatformCarryPanel({
       const data = (await response.json()) as { ok?: boolean; error?: string; demoMode?: boolean; message?: string };
       if (!response.ok || !data.ok) {
         setStatus(data.error || "Telegram 테스트 알림 전송에 실패했습니다.");
-        trackMixpanel("telegram_test_sent", {
+        void trackEvent("Telegram Test Sent", {
           demo_mode: Boolean(data.demoMode),
           status: "failed",
           strategy_id: strategy.id,
@@ -81,14 +85,14 @@ export function PlatformCarryPanel({
         return;
       }
       setStatus(data.message || (data.demoMode ? "Telegram 데모 전송을 완료했습니다." : "Telegram 테스트 알림을 전송했습니다."));
-      trackMixpanel("telegram_test_sent", {
+      void trackEvent("Telegram Test Sent", {
         demo_mode: Boolean(data.demoMode),
         status: "success",
         strategy_id: strategy.id,
       });
     } catch {
       setStatus("Telegram 테스트 알림 요청에 실패했습니다.");
-      trackMixpanel("telegram_test_sent", {
+      void trackEvent("Telegram Test Sent", {
         status: "failed",
         strategy_id: strategy.id,
       });
@@ -131,7 +135,8 @@ export function PlatformCarryPanel({
       const info = await ensureExportInfo();
       await navigator.clipboard.writeText(info.webhookUrl);
       setStatus("TradingView webhook URL을 복사했습니다.");
-      trackMixpanel("platform_copy_clicked", {
+      markFeedbackSignal("export_clicked", "/app:platform_carry");
+      void trackEvent("TradingView Export Clicked", {
         copy_type: "webhook_url",
         platform: activeTab,
         status: "success",
@@ -139,7 +144,7 @@ export function PlatformCarryPanel({
       });
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Webhook URL 복사에 실패했습니다.");
-      trackMixpanel("platform_copy_clicked", {
+      void trackEvent("TradingView Export Clicked", {
         copy_type: "webhook_url",
         platform: activeTab,
         status: "failed",
@@ -154,7 +159,8 @@ export function PlatformCarryPanel({
       const info = await ensureExportInfo();
       await navigator.clipboard.writeText(info.tradingViewJson);
       setStatus("TradingView 메시지 JSON을 복사했습니다.");
-      trackMixpanel("platform_copy_clicked", {
+      markFeedbackSignal("export_clicked", "/app:platform_carry");
+      void trackEvent("TradingView Export Clicked", {
         copy_type: "message_json",
         platform: activeTab,
         status: "success",
@@ -162,7 +168,7 @@ export function PlatformCarryPanel({
       });
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "TradingView 메시지 JSON 복사에 실패했습니다.");
-      trackMixpanel("platform_copy_clicked", {
+      void trackEvent("TradingView Export Clicked", {
         copy_type: "message_json",
         platform: activeTab,
         status: "failed",

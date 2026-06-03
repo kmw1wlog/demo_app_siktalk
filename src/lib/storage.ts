@@ -1,5 +1,4 @@
 import { createId } from "./id";
-import { trackMixpanel } from "./mixpanel";
 import type {
   AnalyticsEvent,
   ConversionPlatform,
@@ -77,7 +76,6 @@ export function getEvents(): AnalyticsEvent[] {
 
 export function addEvent(event: AnalyticsEvent): void {
   safeWrite(keys.events, [event, ...getEvents()]);
-  trackMixpanel(event.type, event);
 }
 
 export function getConversionRequests(): ConversionRequest[] {

@@ -7,7 +7,8 @@ import { DemoPlatformPanel } from "@/components/demo/DemoPlatformPanel";
 import { Textarea } from "@/components/ui/Textarea";
 import { quickIdeas } from "@/lib/constants";
 import { DEMO_STRATEGY, isDemoStrategyQuestion } from "@/lib/demo-strategy";
-import { trackMixpanel } from "@/lib/mixpanel";
+import { markFeedbackSignal, setFeedbackLastScreen } from "@/lib/feedback-session";
+import { trackEvent } from "@/lib/mixpanel";
 import { addEvent } from "@/lib/storage";
 import type { AssetClass, StrategyCard as StrategyCardType } from "@/lib/types";
 
@@ -62,7 +63,7 @@ export function StrategyInput({
   useEffect(() => {
     if (appOpenedRef.current) return;
     appOpenedRef.current = true;
-    trackMixpanel("app_opened", {
+    void trackEvent("Demo Viewed", {
       entry_surface: "app",
       initial_source: initialSource,
       initial_view: initialView,
@@ -80,12 +81,13 @@ export function StrategyInput({
     const eventKey = `${demoView}:${strategy?.id ?? "none"}:${previousDemoView}`;
     if (stageEventKeyRef.current === eventKey) return;
     stageEventKeyRef.current = eventKey;
-    trackMixpanel("app_stage_viewed", {
+    void trackEvent("App Stage Viewed", {
       market: selectedMarket,
       source: previousDemoView,
       stage: demoView,
       strategy_present: Boolean(strategy),
     });
+    setFeedbackLastScreen(`/app:${demoView}`);
   }, [demoView, previousDemoView, selectedMarket, strategy]);
 
   useEffect(() => {
@@ -105,7 +107,7 @@ export function StrategyInput({
   function selectMarket(market: AssetClass) {
     setSelectedMarket(market);
     window.localStorage.setItem("siktalk.selectedMarket", market);
-    trackMixpanel("market_selected", { market });
+    void trackEvent("Market Selected", { market });
   }
 
   async function createStrategy(ideaFromTemplate?: string) {
@@ -115,7 +117,7 @@ export function StrategyInput({
       return;
     }
     const demoIntent = isDemoStrategyQuestion(idea) || idea.includes("5일선 20일선") || idea.includes("5·20선");
-    trackMixpanel("strategy_prompt_submitted", {
+    void trackEvent("AI Prompt Submitted", {
       input_length: idea.length,
       is_demo_intent: demoIntent,
       market: selectedMarket,
@@ -130,10 +132,11 @@ export function StrategyInput({
       setDemoView("chat");
       setPreviousDemoView("chat");
       setError("");
-      trackMixpanel("demo_strategy_seeded", {
+      void trackEvent("Strategy Card Created", {
         market: selectedMarket,
         source: ideaFromTemplate ? "chip" : "composer",
         strategy_id: nextStrategy.id,
+        strategy_name: nextStrategy.title,
       });
       addEvent({
         type: "strategy_created",
@@ -157,6 +160,12 @@ export function StrategyInput({
       setStrategy(data.strategy);
       setRawIdea("");
       setShowDemoPanel(false);
+      void trackEvent("Strategy Card Created", {
+        market: selectedMarket,
+        source: ideaFromTemplate ? "chip" : "composer",
+        strategy_id: data.strategy.id,
+        strategy_name: data.strategy.title,
+      });
       addEvent({
         type: "strategy_created",
         strategyId: data.strategy.id,
@@ -172,11 +181,12 @@ export function StrategyInput({
 
   function selectDemoStrategy(source: "chat" | "conditions" = "chat") {
     const createdAt = new Date().toISOString();
-    trackMixpanel("ai_strategy_selected", {
+    void trackEvent("Strategy Card Clicked", {
       source,
       strategy_id: DEMO_STRATEGY.id,
       strategy_name: DEMO_STRATEGY.title,
     });
+    markFeedbackSignal("strategy_clicked", "/app:card");
     setStrategy({ ...DEMO_STRATEGY, createdAt, updatedAt: createdAt });
     setShowDemoPanel(true);
     setPreviousDemoView(source);
@@ -190,7 +200,7 @@ export function StrategyInput({
           <HomeStage
             marketIdeas={marketIdeas[selectedMarket]}
             onDemo={() => {
-              trackMixpanel("demo_cta_clicked", { location: "home_hero" });
+              void trackEvent("Demo CTA Clicked", { location: "home_hero" });
               setRawIdea("5일선 20일선 골든크로스 전략 찾아줘");
               selectMarket("koreanStock");
               void createStrategy("5일선 20일선 골든크로스 전략 찾아줘");
@@ -212,10 +222,11 @@ export function StrategyInput({
               setDemoView("chat");
             }}
             onApply={() => {
-              trackMixpanel("chart_apply_clicked", {
+              void trackEvent("Chart Render Clicked", {
                 strategy_id: strategy.id,
                 strategy_name: strategy.title,
               });
+              markFeedbackSignal("chart_render_clicked", "/app:chart");
               setDemoView("chart");
             }}
           />

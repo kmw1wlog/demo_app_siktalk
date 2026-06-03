@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SeriesMarker, UTCTimestamp } from "lightweight-charts";
 import type { HynixChartSnapshot } from "@/lib/kis-minute-chart";
-import { trackMixpanel } from "@/lib/mixpanel";
+import { markFeedbackSignal, setFeedbackLastScreen } from "@/lib/feedback-session";
+import { trackEvent } from "@/lib/mixpanel";
 
 type ApiResponse = {
   ok?: boolean;
@@ -41,7 +42,7 @@ export function HynixKisChartPanel() {
       }
       setSnapshot(data.snapshot);
       const elapsed = (typeof performance !== "undefined" ? performance.now() : Date.now()) - startedAt;
-      trackMixpanel("chart_load_completed", {
+      void trackEvent("Chart Load Completed", {
         candle_count: data.snapshot.candles.length,
         execution_strength: data.snapshot.executionStrength.value,
         latest_close: data.snapshot.latestClose,
@@ -55,7 +56,7 @@ export function HynixKisChartPanel() {
       const message = caught instanceof Error ? caught.message : "KIS 차트 요청에 실패했습니다.";
       setError(message);
       const elapsed = (typeof performance !== "undefined" ? performance.now() : Date.now()) - startedAt;
-      trackMixpanel("chart_load_failed", {
+      void trackEvent("Chart Load Failed", {
         error_message: message.slice(0, 160),
         load_ms: Math.round(elapsed),
         source,
@@ -72,7 +73,8 @@ export function HynixKisChartPanel() {
     try {
       await navigator.clipboard.writeText(buildPineScript(strengthThreshold, barLimit, drawdownLimit));
       setCopyStatus("TradingView Pine Script를 복사했습니다.");
-      trackMixpanel("platform_copy_clicked", {
+      markFeedbackSignal("export_clicked", "/app:chart");
+      void trackEvent("TradingView Export Clicked", {
         copy_type: "pine_script",
         platform: "tradingview",
         status: "success",
@@ -81,7 +83,7 @@ export function HynixKisChartPanel() {
       });
     } catch {
       setCopyStatus("복사에 실패했습니다. 브라우저 권한을 확인하세요.");
-      trackMixpanel("platform_copy_clicked", {
+      void trackEvent("TradingView Export Clicked", {
         copy_type: "pine_script",
         platform: "tradingview",
         status: "failed",
@@ -92,6 +94,7 @@ export function HynixKisChartPanel() {
   }
 
   useEffect(() => {
+    setFeedbackLastScreen("/app:chart");
     void loadChart("initial");
   }, [loadChart]);
 
@@ -235,7 +238,7 @@ export function HynixKisChartPanel() {
           className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 shadow-sm disabled:opacity-50"
           disabled={loading || refreshing}
           onClick={() => {
-            trackMixpanel("chart_refresh_clicked", {
+            void trackEvent("Chart Refresh Clicked", {
               strength_threshold: strengthThreshold,
               symbol: "000660",
             });
