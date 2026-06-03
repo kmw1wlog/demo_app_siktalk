@@ -7,7 +7,6 @@ import {
   dismissFeedbackForSession,
   ensureFeedbackSession,
   getFeedbackContext,
-  hasFeedbackCompleted,
   isFeedbackDismissedForSession,
   markFeedbackCompleted,
   recordFeedbackEvent,
@@ -83,44 +82,55 @@ export function FeedbackWidget() {
   const [mounted, setMounted] = useState(false);
   const [open, setOpen] = useState(false);
   const [surveyOpen, setSurveyOpen] = useState(false);
-  const [completed, setCompleted] = useState(false);
   const viewedRef = useRef(false);
 
   useEffect(() => {
     ensureFeedbackSession();
-    setCompleted(hasFeedbackCompleted());
     setMounted(true);
   }, []);
 
   useEffect(() => {
-    if (!mounted || completed) return;
+    if (!mounted) return;
     if (!viewedRef.current) {
       viewedRef.current = true;
       recordFeedbackEvent("Feedback Widget Viewed", { state: "collapsed" });
     }
 
     const timer = window.setTimeout(() => {
-      if (!isFeedbackDismissedForSession() && !hasFeedbackCompleted()) {
+      if (!isFeedbackDismissedForSession()) {
         setOpen(true);
         recordFeedbackEvent("Feedback Widget Opened", { trigger: "time_60s" });
       }
     }, 60000);
 
     function handleSignal(event: Event) {
-      if (isFeedbackDismissedForSession() || hasFeedbackCompleted()) return;
+      if (isFeedbackDismissedForSession()) return;
       const detail = (event as CustomEvent<{ signal?: string }>).detail;
       setOpen(true);
       recordFeedbackEvent("Feedback Widget Opened", { trigger: detail?.signal || "usage_signal" });
     }
 
+    function handleOpen(event: Event) {
+      const detail = (event as CustomEvent<{ mode?: "card" | "survey"; trigger?: string }>).detail;
+      if (detail?.mode === "survey") {
+        setSurveyOpen(true);
+        setOpen(false);
+      } else {
+        setOpen(true);
+      }
+      recordFeedbackEvent("Feedback Widget Opened", { trigger: detail?.trigger || "manual_open" });
+    }
+
     window.addEventListener("siktalk:feedback-signal", handleSignal);
+    window.addEventListener("siktalk:feedback-open", handleOpen);
     return () => {
       window.clearTimeout(timer);
       window.removeEventListener("siktalk:feedback-signal", handleSignal);
+      window.removeEventListener("siktalk:feedback-open", handleOpen);
     };
-  }, [completed, mounted]);
+  }, [mounted]);
 
-  if (!mounted || completed) return null;
+  if (!mounted) return null;
 
   function openSurvey() {
     recordFeedbackEvent("Feedback CTA Clicked", { source: open ? "expanded_card" : "collapsed_button" });
@@ -161,7 +171,7 @@ export function FeedbackWidget() {
               recordFeedbackEvent("Feedback Widget Opened", { trigger: "collapsed_button" });
             }}
           >
-            AI 앱 쿠폰 + 지표 받기
+            30초 설문 · 쿠폰 + 지표 받기
           </button>
         )}
       </div>
@@ -171,7 +181,6 @@ export function FeedbackWidget() {
           onClose={() => setSurveyOpen(false)}
           onCompleted={() => {
             markFeedbackCompleted();
-            setCompleted(true);
             setSurveyOpen(false);
           }}
         />

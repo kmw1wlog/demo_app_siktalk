@@ -231,6 +231,11 @@ export function HynixKisChartPanel() {
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-4xl font-black tracking-[-0.04em] text-slate-950">차트 적용</h1>
+          {snapshot ? (
+            <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm font-black text-slate-700">
+              {snapshot.basis.includes("KIS 실시간") ? "실데이터 분봉" : "데모 분봉"}
+            </span>
+          ) : null}
           <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-black text-emerald-700">
             ● 실시간 렌더링
           </span>

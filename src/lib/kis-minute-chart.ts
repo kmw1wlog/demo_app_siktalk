@@ -1,3 +1,4 @@
+import { getKisAccessToken, getKisCredentials } from "@/lib/kis";
 import { fetchKiwoomExecutionStrength, type KiwoomExecutionStrength } from "@/lib/kiwoom";
 
 type BaseCandle = {
@@ -39,11 +40,6 @@ export type HynixChartSnapshot = {
   lastBullishCrossPrice: number | null;
 };
 
-type KisTokenCache = {
-  token: string;
-  expiresAt: number;
-};
-
 type CandleCacheEntry = {
   expiresAt: number;
   snapshot: HynixChartSnapshot;
@@ -55,26 +51,12 @@ type KisChartResponse = {
   output2?: Array<Record<string, string>>;
 };
 
-const KIS_REAL_BASE_URL = "https://openapi.koreainvestment.com:9443";
-const MINUTE_ENDPOINT = "/uapi/domestic-stock/v1/quotations/inquire-time-dailychartprice";
-const MINUTE_TR_ID = "FHKST03010230";
+const MINUTE_ENDPOINT = "/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice";
+const MINUTE_TR_ID = "FHKST03010200";
 const HYNIX_SYMBOL = "000660";
 const HYNIX_NAME = "SK하이닉스";
 
-let tokenCache: KisTokenCache | null = null;
-let tokenPromise: Promise<string> | null = null;
 const chartCache = new Map<string, CandleCacheEntry>();
-
-function getKisCredentials() {
-  const apiKey = process.env.KIS_API_KEY || process.env.KIS_APP_KEY || "";
-  const apiSecret = process.env.KIS_API_SECRET || process.env.KIS_APP_SECRET || "";
-  const baseUrl = (process.env.KIS_BASE_URL || KIS_REAL_BASE_URL).replace(/\/$/, "");
-  return {
-    apiKey: apiKey.trim(),
-    apiSecret: apiSecret.trim(),
-    baseUrl,
-  };
-}
 
 function nowKst() {
   return new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
@@ -131,71 +113,17 @@ function subtractOneMinute(dateText: string, timeText: string) {
   return kstDateParts(cursor);
 }
 
-async function getKisAccessToken() {
-  if (tokenCache && tokenCache.expiresAt > Date.now() + 5 * 60_000) {
-    return tokenCache.token;
-  }
-  if (tokenPromise) {
-    return tokenPromise;
-  }
-
-  const { apiKey, apiSecret, baseUrl } = getKisCredentials();
-  if (!apiKey || !apiSecret) {
-    throw new Error("KIS credentials missing");
-  }
-
-  tokenPromise = (async () => {
-    const response = await fetch(`${baseUrl}/oauth2/tokenP`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        grant_type: "client_credentials",
-        appkey: apiKey,
-        appsecret: apiSecret,
-      }),
-      cache: "no-store",
-    });
-    const data = (await response.json()) as {
-      access_token?: string;
-      access_token_token_expired?: string;
-      error_description?: string;
-    };
-
-    if (!response.ok || !data.access_token) {
-      throw new Error(data.error_description || `KIS token failed: HTTP ${response.status}`);
-    }
-
-    const expiresAt = data.access_token_token_expired
-      ? new Date(data.access_token_token_expired.replace(" ", "T") + "+09:00").getTime()
-      : Date.now() + 12 * 60 * 60_000;
-
-    tokenCache = {
-      token: data.access_token,
-      expiresAt,
-    };
-
-    return data.access_token;
-  })();
-
-  try {
-    return await tokenPromise;
-  } finally {
-    tokenPromise = null;
-  }
-}
-
-async function fetchMinutePage(anchorDate: string, anchorTime: string) {
-  const { apiKey, apiSecret, baseUrl } = getKisCredentials();
+async function fetchMinutePage(_anchorDate: string, anchorTime: string) {
+  const { appkey, appsecret, baseUrl } = getKisCredentials();
   const token = await getKisAccessToken();
   const url = new URL(`${baseUrl}${MINUTE_ENDPOINT}`);
 
   const params = {
+    FID_ETC_CLS_CODE: "",
     FID_COND_MRKT_DIV_CODE: "J",
     FID_INPUT_ISCD: HYNIX_SYMBOL,
     FID_INPUT_HOUR_1: anchorTime,
-    FID_INPUT_DATE_1: anchorDate,
-    FID_PW_DATA_INCU_YN: "Y",
-    FID_FAKE_TICK_INCU_YN: "N",
+    FID_PW_DATA_INCU_YN: "N",
   };
 
   for (const [key, value] of Object.entries(params)) {
@@ -205,8 +133,8 @@ async function fetchMinutePage(anchorDate: string, anchorTime: string) {
   const response = await fetch(url, {
     headers: {
       authorization: `Bearer ${token}`,
-      appkey: apiKey,
-      appsecret: apiSecret,
+      appkey,
+      appsecret,
       tr_id: MINUTE_TR_ID,
       custtype: "P",
     },
