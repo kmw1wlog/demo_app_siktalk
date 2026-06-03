@@ -134,14 +134,18 @@ export function PreSurveyPage() {
         <section className="space-y-5">
           <div>
             <p className="text-sm font-black text-emerald-700">식톡 데모 리서치</p>
-            <h1 className="mt-3 text-4xl font-black leading-tight md:text-5xl">조건식 앱을 써보기 전 30초만 남겨주세요</h1>
+            <h1 className="mt-3 text-4xl font-black leading-tight md:text-5xl">이메일 남기고 식톡 데모와 혜택을 먼저 받아보세요</h1>
             <p className="mt-4 text-base font-semibold leading-7 text-slate-600">
-              앱 쿠폰과 TradingView 관찰용 무료 지표를 받을 이메일을 먼저 남겨주세요.
+              이메일을 남기면 AI 앱 쿠폰, TradingView 관찰용 지표, 영웅문 세팅 PDF를 함께 보내드립니다.
+            </p>
+            <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">
+              앱 체험을 마친 뒤 마지막에 짧은 사용 의견까지 남기면 혜택 발송 대상에 함께 포함됩니다.
             </p>
           </div>
 
           <a
             href="/api/feedback/ebook"
+            download
             className="inline-flex min-h-11 items-center justify-center rounded-lg border border-emerald-600 bg-white px-4 text-sm font-black text-emerald-700 shadow-sm"
             onClick={() => {
               void trackEvent("PDF Download Clicked", {
@@ -167,7 +171,7 @@ export function PreSurveyPage() {
                 type="email"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
-                placeholder="식톡 데모 링크와 무료 PDF를 받을 이메일"
+                placeholder="AI 앱 쿠폰과 TradingView 지표를 받을 이메일"
               />
             </Field>
 
@@ -188,7 +192,9 @@ export function PreSurveyPage() {
             {result ? (
               <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
                 <p className="text-sm font-black text-emerald-900">저장 완료</p>
-                <p className="mt-1 text-sm font-semibold text-emerald-800">아래 버튼으로 데모 앱을 열면 후설문이 이어집니다.</p>
+                <p className="mt-1 text-sm font-semibold text-emerald-800">
+                  아래 버튼으로 데모 앱을 열고 둘러본 뒤, 마지막에 짧은 사용 의견만 남기면 혜택 발송 대상에 함께 포함됩니다.
+                </p>
                 <Link
                   href={demoHref}
                   className="mt-4 inline-flex min-h-11 items-center justify-center rounded-lg bg-emerald-600 px-4 text-sm font-black text-white"

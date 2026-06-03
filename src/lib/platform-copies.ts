@@ -1,7 +1,7 @@
 import { assetClassLabel, timeframeLabel } from "./format";
 import type { StrategyCard } from "./types";
 
-export type PlatformCopyTab = "natural" | "tradingview" | "yestrader" | "kiwoom" | "telegram" | "kis";
+export type PlatformCopyTab = "natural" | "tradingview" | "yestrader" | "kiwoom" | "telegram";
 
 export const platformCopyTabs: { id: PlatformCopyTab; label: string; hint: string }[] = [
   { id: "natural", label: "자연어 설명", hint: "사람이 읽는 관찰 흐름" },
@@ -9,7 +9,6 @@ export const platformCopyTabs: { id: PlatformCopyTab; label: string; hint: strin
   { id: "yestrader", label: "예스랭귀지", hint: "전략식 초안" },
   { id: "kiwoom", label: "키움 설정표", hint: "HTS 입력 순서" },
   { id: "telegram", label: "Telegram", hint: "알림 문구 템플릿" },
-  { id: "kis", label: "KIS API", hint: "JSON 스키마 초안" },
 ];
 
 export function getPlatformCopy(strategy: StrategyCard, tab: PlatformCopyTab): string {
@@ -24,8 +23,6 @@ export function getPlatformCopy(strategy: StrategyCard, tab: PlatformCopyTab): s
       return buildKiwoomDraft(strategy);
     case "telegram":
       return buildTelegramDraft(strategy);
-    case "kis":
-      return buildKisDraft(strategy);
     default:
       return buildNaturalCopy(strategy);
   }
@@ -155,27 +152,6 @@ ${listWithDash(strategy.conditions.exit)}
 이 알림은 투자 추천이 아니라 사용자가 설정한 조건 충족 알림 초안입니다.`;
 }
 
-function buildKisDraft(strategy: StrategyCard): string {
-  return `{
-  "strategy_name": "${sanitizeLine(strategy.title)}",
-  "market": "${assetClassLabel(strategy.assetClass)}",
-  "timeframe": "${timeframeLabel(strategy.timeframe)}",
-  "entry": [
-${listAsJson(strategy.conditions.entry)}
-  ],
-  "exit": [
-${listAsJson(strategy.conditions.exit)}
-  ],
-  "universe": [
-${listAsJson(strategy.conditions.universe)}
-  ],
-  "filters": [
-${listAsJson(strategy.conditions.filters)}
-  ],
-  "notice": "Draft only. Manual review required."
-}`;
-}
-
 function listWithDash(items: string[]): string {
   return items.map((item) => `- ${item}`).join("\n");
 }
@@ -188,18 +164,10 @@ function listAsComments(items: string[]): string {
   return items.map((item, index) => `// ${index + 1}. ${item}`).join("\n");
 }
 
-function listAsJson(items: string[]): string {
-  return items.map((item) => `    "${escapeJson(item)}"`).join(",\n");
-}
-
 function sanitizeTitle(value: string): string {
   return value.replace(/"/g, "").replace(/\s+/g, "_");
 }
 
 function sanitizeLine(value: string): string {
   return value.replace(/\n/g, " ").replace(/"/g, '\\"');
-}
-
-function escapeJson(value: string): string {
-  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }

@@ -5,6 +5,7 @@ import type { SeriesMarker, UTCTimestamp } from "lightweight-charts";
 import type { HynixChartSnapshot } from "@/lib/kis-minute-chart";
 import { markFeedbackSignal, setFeedbackLastScreen } from "@/lib/feedback-session";
 import { trackEvent } from "@/lib/mixpanel";
+import { KisInAppAlertPanel } from "./KisInAppAlertPanel";
 
 type ApiResponse = {
   ok?: boolean;
@@ -19,6 +20,7 @@ export function HynixKisChartPanel() {
   const drawdownLimit = 2;
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [showAlertPanel, setShowAlertPanel] = useState(false);
   const [copyStatus, setCopyStatus] = useState("");
   const [error, setError] = useState("");
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -301,7 +303,7 @@ export function HynixKisChartPanel() {
             </span>
             <span className="text-emerald-300">● 전략이 차트에 적용되었습니다</span>
           </div>
-          {loading ? <div className="flex h-[460px] items-center justify-center text-sm font-bold text-slate-300">KIS 차트 불러오는 중</div> : null}
+          {loading ? <div className="flex h-[460px] items-center justify-center text-sm font-bold text-slate-300">차트 불러오는 중</div> : null}
           {!loading && error ? <div className="flex h-[460px] items-center justify-center px-6 text-center text-sm font-bold text-rose-300">{error}</div> : null}
           {!loading && !error ? <div ref={containerRef} className="w-full" /> : null}
           <div className="flex flex-col gap-2 border-t border-white/10 px-3 py-3 text-xs font-bold text-slate-400 md:flex-row md:items-center md:justify-between">
@@ -311,12 +313,12 @@ export function HynixKisChartPanel() {
             <span>
               <span className="text-orange-400">● 종료</span> 5일선 20일선 하향 이탈 또는 종가 20일선 하회
             </span>
-            <span>데이터: KIS/키움 {strength !== null ? `· 체결강도 ${strength.toFixed(2)}${strengthOk ? " 충족" : ""}` : ""}</span>
+            <span>데이터: {snapshot?.basis || "차트"} {strength !== null ? `· 체결강도 ${strength.toFixed(2)}${strengthOk ? " 충족" : ""}` : ""}</span>
           </div>
         </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-[1.2fr_1fr_1fr_auto]">
+      <div className="grid gap-3 md:grid-cols-2">
         <button
           type="button"
           className="flex h-16 items-center justify-center rounded-2xl bg-emerald-600 px-5 text-base font-black text-white shadow-lg shadow-emerald-100"
@@ -324,16 +326,16 @@ export function HynixKisChartPanel() {
         >
           &lt;/&gt; TradingView Pine 복사
         </button>
-        <button type="button" className="flex h-16 items-center justify-center rounded-2xl border border-slate-200 bg-white px-5 text-base font-black text-slate-800">
-          전략 카드 보기
-        </button>
-        <button type="button" className="flex h-16 items-center justify-center rounded-2xl border border-slate-200 bg-white px-5 text-base font-black text-slate-800">
-          베타 신청
-        </button>
-        <button type="button" className="flex h-16 items-center justify-center rounded-2xl border border-slate-200 bg-white px-5 text-xl font-black text-slate-800">
-          …
+        <button
+          type="button"
+          className="flex h-16 items-center justify-center rounded-2xl border border-slate-200 bg-white px-5 text-base font-black text-slate-800"
+          onClick={() => setShowAlertPanel((current) => !current)}
+        >
+          {showAlertPanel ? "알림 설정 닫기" : "관찰 알림 설정"}
         </button>
       </div>
+
+      {showAlertPanel ? <KisInAppAlertPanel /> : null}
 
       {copyStatus ? (
         <div className="mx-auto flex w-fit items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm font-black text-emerald-800 shadow-sm">
@@ -348,11 +350,8 @@ export function HynixKisChartPanel() {
         <p>
           {snapshot
             ? `${snapshot.basis} · ${snapshot.executionStrength.message} · ${snapshot.updatedAt ? formatDate(snapshot.updatedAt) : "갱신 시각 없음"}`
-            : "KIS/키움 데이터 준비중"}
+            : "차트 데이터를 준비중입니다"}
         </p>
-        <a href="https://github.com/tradingview/lightweight-charts" target="_blank" rel="noreferrer" className="font-black text-slate-700 underline underline-offset-2">
-          TradingView Lightweight Charts
-        </a>
       </div>
     </section>
   );

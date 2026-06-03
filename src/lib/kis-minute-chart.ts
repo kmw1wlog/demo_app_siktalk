@@ -354,6 +354,14 @@ function buildConditionMarkers(candles: HynixChartCandle[], executionStrength: K
 }
 
 export async function fetchHynixChartSnapshot(lookbackMinutes = 180, strengthThreshold = 99): Promise<HynixChartSnapshot> {
+  try {
+    return await fetchHynixChartSnapshotLive(lookbackMinutes, strengthThreshold);
+  } catch {
+    return buildFallbackSnapshot(lookbackMinutes, strengthThreshold);
+  }
+}
+
+async function fetchHynixChartSnapshotLive(lookbackMinutes = 180, strengthThreshold = 99): Promise<HynixChartSnapshot> {
   const cacheKey = `${lookbackMinutes}:${strengthThreshold}`;
   const cached = chartCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
@@ -440,4 +448,58 @@ export async function fetchHynixChartSnapshot(lookbackMinutes = 180, strengthThr
   });
 
   return snapshot;
+}
+
+function buildFallbackSnapshot(lookbackMinutes: number, strengthThreshold: number): HynixChartSnapshot {
+  const baseCandles = Array.from({ length: lookbackMinutes }, (_, index) => {
+    const wave = Math.sin(index / 7) * 1800;
+    const trend = index * 65;
+    const open = Math.round(185000 + trend + wave);
+    const close = Math.round(open + Math.cos(index / 3) * 900 + (index % 4 === 0 ? 600 : -200));
+    const high = Math.max(open, close) + 1100;
+    const low = Math.min(open, close) - 1000;
+    const volume = Math.round(90000 + index * 2500 + Math.abs(Math.sin(index / 5) * 45000));
+    return {
+      time: Math.floor(Date.now() / 1000) - (lookbackMinutes - index) * 60,
+      open,
+      high,
+      low,
+      close,
+      volume,
+    };
+  });
+
+  const candles = appendMovingAverages(baseCandles);
+  const executionStrength: KiwoomExecutionStrength = {
+    source: "kiwoom",
+    symbol: HYNIX_SYMBOL,
+    value: 103.4,
+    value5m: 101.2,
+    value20m: 99.8,
+    value60m: 98.4,
+    currentPrice: candles.at(-1)?.close ?? null,
+    updatedAt: new Date().toISOString(),
+    authenticated: false,
+    message: "실데이터 인증 전이라 데모 차트로 표시합니다.",
+  };
+  const lastBullishCross = findLastBullishCross(candles);
+  const markers = buildConditionMarkers(candles, executionStrength, strengthThreshold);
+  const latest = candles.at(-1) || null;
+
+  return {
+    symbol: HYNIX_SYMBOL,
+    name: HYNIX_NAME,
+    source: "kis",
+    basis: "데모 분봉 기준",
+    updatedAt: new Date().toISOString(),
+    candles,
+    latestClose: latest?.close ?? null,
+    latestMa5: latest?.ma5 ?? null,
+    latestMa20: latest?.ma20 ?? null,
+    latestVolumeMa20: latest?.volumeMa20 ?? null,
+    executionStrength,
+    markers,
+    lastBullishCrossTime: lastBullishCross.time,
+    lastBullishCrossPrice: lastBullishCross.price,
+  };
 }

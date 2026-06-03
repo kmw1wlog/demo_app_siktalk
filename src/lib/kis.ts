@@ -19,9 +19,9 @@ const KIS_CREDENTIAL_CACHE_MS = 23 * 60 * 60 * 1000;
 let cachedCredentialCheck: { value: KisCredentialCheck; expiresAt: number } | null = null;
 
 export async function verifyKisCredentials(): Promise<KisCredentialCheck> {
-  const appkey = process.env.KIS_APP_KEY;
-  const appsecret = process.env.KIS_APP_SECRET;
-  const baseUrl = process.env.KIS_API_BASE_URL || DEFAULT_KIS_BASE_URL;
+  const appkey = process.env.KIS_API_KEY || process.env.KIS_APP_KEY;
+  const appsecret = process.env.KIS_API_SECRET || process.env.KIS_APP_SECRET;
+  const baseUrl = process.env.KIS_API_BASE_URL || process.env.KIS_BASE_URL || DEFAULT_KIS_BASE_URL;
 
   if (!appkey || !appsecret) {
     return {

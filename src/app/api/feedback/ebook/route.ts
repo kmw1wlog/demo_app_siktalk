@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
+import path from "node:path";
 
-const ebookPath = "/home/openq/code/platform_block_trade/영웅문_단타_화면_세팅_가이드.pdf";
+const ebookPath = path.join(process.cwd(), "public", "downloads", "siktalk-heromoon-setting-guide.pdf");
 
 export async function GET() {
   try {

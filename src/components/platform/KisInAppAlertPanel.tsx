@@ -70,17 +70,17 @@ export function KisInAppAlertPanel() {
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-lg font-black text-slate-950">KIS 인앱 알림</h2>
-            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">{mode}</span>
+            <h2 className="text-lg font-black text-slate-950">관찰 알림 설정</h2>
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">{mode === "kis-paper" ? "실데이터 확인" : "데모 모드"}</span>
             {alert?.source === "KIS_AUTHENTICATED_PAPER" ? (
-              <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-blue-700">KIS 인증 확인</span>
+              <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-blue-700">인증 확인</span>
             ) : null}
             {visibleAlert?.triggered ? (
               <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700">알림 발생</span>
             ) : null}
           </div>
           <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">
-            MA5/MA20 단일 관찰식을 KIS 데이터 감시 흐름처럼 확인합니다. 현재 데모는 paper 모드 가상 데이터입니다.
+            5일선과 20일선 조건이 붙는지 확인하고, 관찰 알림 형태로 바로 점검합니다.
           </p>
 
           <div className="mt-4 grid gap-3 md:grid-cols-3">
@@ -95,7 +95,7 @@ export function KisInAppAlertPanel() {
             disabled={loading}
             onClick={() => void runKisWatch()}
           >
-            {loading ? "KIS 감시 확인 중" : "KIS 알림 확인"}
+            {loading ? "알림 상태 확인 중" : "알림 상태 확인"}
           </button>
 
           {status ? (

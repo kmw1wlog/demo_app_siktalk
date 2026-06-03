@@ -141,7 +141,7 @@ export function FeedbackWidget() {
           <div className="w-[calc(100vw-2rem)] rounded-lg border border-slate-200 bg-white p-4 shadow-2xl md:w-96">
             <p className="text-base font-black text-slate-950">앱을 써보신 느낌이 궁금합니다.</p>
             <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">
-              30초 피드백을 남겨주시면 식톡 베타 쿠폰과 TradingView 관찰용 무료 지표를 보내드립니다.
+              30초 의견을 남겨주시면 AI 앱 쿠폰과 TradingView 관찰용 지표를 보내드립니다.
             </p>
             <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">
               “키움이 더 낫다”, “트뷰로만 쓰고 싶다” 같은 의견도 환영합니다.
@@ -161,7 +161,7 @@ export function FeedbackWidget() {
               recordFeedbackEvent("Feedback Widget Opened", { trigger: "collapsed_button" });
             }}
           >
-            30초 피드백
+            의견 남기고 혜택 받기
           </button>
         )}
       </div>
@@ -245,7 +245,7 @@ function FeedbackSurveyModal({
       <div className="max-h-[92dvh] w-full max-w-3xl overflow-y-auto rounded-lg bg-white p-5 shadow-2xl">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-xl font-black text-slate-950">앱 사용 후 피드백</h2>
+            <h2 className="text-xl font-black text-slate-950">앱 체험 의견</h2>
             <p className="mt-1 text-sm font-semibold text-slate-500">제출 후 바로 앱으로 돌아갑니다.</p>
           </div>
           <Button variant="ghost" className="min-h-8 px-2 py-1" onClick={onClose}>닫기</Button>
