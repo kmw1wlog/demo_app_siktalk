@@ -17,6 +17,19 @@ type AlertBotResponse = {
   error?: string;
 };
 
+type BacktestPreviewResponse = {
+  ok?: boolean;
+  result?: {
+    oneWeekPreview: {
+      returnPct: number;
+      positiveDays: number;
+      signalCount: number;
+      averageTradeReturnPct: number;
+    };
+  };
+  error?: string;
+};
+
 type ConversationItem = {
   role: "user" | "assistant";
   text: string;
@@ -36,6 +49,8 @@ export function AlertBotClient({ initialMessage = "" }: { initialMessage?: strin
   const [error, setError] = useState("");
   const [conversation, setConversation] = useState<ConversationItem[]>([]);
   const [draft, setDraft] = useState<AlertBotDraft>(buildAlertBotDraft(initialMessage || quickPrompts[0]));
+  const [backtestPreview, setBacktestPreview] = useState<BacktestPreviewResponse["result"] | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   useEffect(() => {
     void trackEvent("Alert Bot Viewed", { source: initialMessage ? "chart" : "nav" });
@@ -43,6 +58,7 @@ export function AlertBotClient({ initialMessage = "" }: { initialMessage?: strin
 
   const canSubmit = message.trim().length > 0 && turn < 3 && !loading;
   const turnLabel = useMemo(() => `가벼운 설정 대화 ${Math.min(turn + 1, 3)}/3`, [turn]);
+  const previewIdea = conversation.filter((item) => item.role === "user").map((item) => item.text).join(" ") || initialMessage || quickPrompts[0];
 
   async function submit(nextMessage?: string) {
     const outgoing = (nextMessage ?? message).trim();
@@ -84,6 +100,31 @@ export function AlertBotClient({ initialMessage = "" }: { initialMessage?: strin
       setError(caught instanceof Error ? caught.message : "알림봇 응답에 실패했습니다.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadPreview() {
+    setPreviewLoading(true);
+    setError("");
+    try {
+      const response = await fetch("/api/backtests/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: draft.title,
+          rawIdea: previewIdea,
+        }),
+      });
+      const data = (await response.json()) as BacktestPreviewResponse;
+      if (!response.ok || !data.ok || !data.result) {
+        throw new Error(data.error || "성과 미리보기를 불러오지 못했습니다.");
+      }
+      setBacktestPreview(data.result);
+      void trackEvent("Alert Bot Backtest Preview Viewed", { title: draft.title });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "성과 미리보기에 실패했습니다.");
+    } finally {
+      setPreviewLoading(false);
     }
   }
 
@@ -173,6 +214,31 @@ export function AlertBotClient({ initialMessage = "" }: { initialMessage?: strin
           <DraftRow label="알림 빈도" value={draft.cadence} />
           <DraftRow label="조용 시간" value={draft.quietHours} />
           <DraftRow label="전달 방식" value={draft.delivery} />
+          <div className="rounded-2xl border border-slate-200 bg-white p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">preview</p>
+                <h3 className="mt-2 text-base font-black text-slate-950">알림 전에 전략 체력 미리보기</h3>
+              </div>
+              <Button variant="secondary" className="rounded-2xl" onClick={() => void loadPreview()} disabled={previewLoading}>
+                {previewLoading ? "확인 중" : "최근 1주 미리보기"}
+              </Button>
+            </div>
+            {backtestPreview ? (
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <DraftRow label="최근 1주 수익률" value={`${backtestPreview.oneWeekPreview.returnPct}%`} />
+                <DraftRow label="양수 일수" value={`${backtestPreview.oneWeekPreview.positiveDays}일`} />
+                <DraftRow label="신호 수" value={`${backtestPreview.oneWeekPreview.signalCount}회`} />
+                <DraftRow label="평균 체결 수익률" value={`${backtestPreview.oneWeekPreview.averageTradeReturnPct}%`} />
+              </div>
+            ) : null}
+            <Link
+              href={`/backtests?title=${encodeURIComponent(draft.title)}&idea=${encodeURIComponent(previewIdea)}`}
+              className="mt-4 inline-flex min-h-10 items-center justify-center rounded-2xl border border-violet-200 bg-violet-50 px-4 text-sm font-black text-violet-900"
+            >
+              1년 백테스트 자세히
+            </Link>
+          </div>
           <div className="rounded-2xl bg-emerald-50 p-4 text-sm font-semibold leading-6 text-emerald-800">
             실제 자동매매가 아니라, 어떤 조건을 언제 다시 보게 만들지 정리하는 화면입니다.
           </div>

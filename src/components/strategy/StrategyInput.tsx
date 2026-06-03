@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { DemoPlatformPanel } from "@/components/demo/DemoPlatformPanel";
+import { StrategyWorkbench } from "@/components/strategy/StrategyWorkbench";
 import { Textarea } from "@/components/ui/Textarea";
 import { quickIdeas } from "@/lib/constants";
 import { DEMO_STRATEGY, isDemoStrategyQuestion } from "@/lib/demo-strategy";
@@ -320,6 +321,8 @@ export function StrategyInput({
             {showDemoPanel ? <DemoPlatformPanel /> : null}
           </div>
         ) : null}
+
+        <StrategyWorkbench selectedMarket={selectedMarket} currentStrategy={strategy} />
       </div>
 
       {(demoView === "home" || demoView === "chat") ? <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-100 bg-white/95 px-4 pb-4 pt-3 backdrop-blur md:sticky md:bottom-4 md:mx-auto md:mt-6 md:w-full md:max-w-3xl md:rounded-3xl md:border md:px-4 md:shadow-lg md:ring-1 md:ring-slate-100">

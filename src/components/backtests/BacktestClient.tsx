@@ -20,9 +20,15 @@ const presetIdeas = [
   { title: "RSI 과매도 반등", rawIdea: "RSI 과매도 반등이 나오는 구간을 관찰하고 싶어." },
 ];
 
-export function BacktestClient() {
-  const [title, setTitle] = useState(presetIdeas[0].title);
-  const [rawIdea, setRawIdea] = useState(presetIdeas[0].rawIdea);
+export function BacktestClient({
+  initialTitle,
+  initialIdea,
+}: {
+  initialTitle?: string;
+  initialIdea?: string;
+}) {
+  const [title, setTitle] = useState(initialTitle || presetIdeas[0].title);
+  const [rawIdea, setRawIdea] = useState(initialIdea || presetIdeas[0].rawIdea);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<BacktestRunResult | null>(null);
@@ -72,8 +78,8 @@ export function BacktestClient() {
     if (bootedRef.current) return;
     bootedRef.current = true;
     void trackEvent("Backtest Screen Viewed", { source: "nav" });
-    void runBacktest(presetIdeas[0].title, presetIdeas[0].rawIdea);
-  }, [runBacktest]);
+    void runBacktest(initialTitle || presetIdeas[0].title, initialIdea || presetIdeas[0].rawIdea);
+  }, [initialIdea, initialTitle, runBacktest]);
 
   const metricCards = useMemo(() => {
     if (!result) return [];

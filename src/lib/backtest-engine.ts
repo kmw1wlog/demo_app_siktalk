@@ -34,6 +34,12 @@ export type BacktestRunResult = {
     medianTradeReturnPct: number;
     monthlySignalCount: number;
   };
+  oneWeekPreview: {
+    returnPct: number;
+    positiveDays: number;
+    signalCount: number;
+    averageTradeReturnPct: number;
+  };
   monthlyPoints: MonthlyPoint[];
   cumulativeCurve: Array<{
     month: string;
@@ -78,6 +84,7 @@ export function runLightBacktest(input: { title?: string; rawIdea: string }): Ba
   const cumulativeCurve = buildCumulativeCurve(monthlyPoints);
   const positiveMonths = monthlyPoints.filter((item) => item.strategyReturnPct > 0).length;
   const negativeStreak = computeMaxLossStreak(tradeReturns);
+  const oneWeekPreview = buildOneWeekPreview(strategyHash, seed, tradeReturns);
   const recentThreeMonthReturnPct = round(
     monthlyPoints.slice(-3).reduce((accumulator, point) => accumulator * (1 + point.strategyReturnPct / 100), 1) * 100 - 100,
   );
@@ -102,6 +109,7 @@ export function runLightBacktest(input: { title?: string; rawIdea: string }): Ba
       medianTradeReturnPct: round(median(tradeReturns)),
       monthlySignalCount: Math.round(mean(monthlyPoints.map((item) => item.signalCount))),
     },
+    oneWeekPreview,
     monthlyPoints,
     cumulativeCurve,
   };
@@ -215,6 +223,20 @@ function buildCumulativeCurve(points: MonthlyPoint[]) {
       kosdaqEquity: round(kosdaqEquity),
     };
   });
+}
+
+function buildOneWeekPreview(
+  strategyHash: string,
+  seed: { signals: number; hitRate: number; avgFutureMaxReturnPct: number; lift: number },
+  tradeReturns: number[],
+) {
+  const base = seed.avgFutureMaxReturnPct * 0.22 + seed.hitRate * 3.1 - 0.8;
+  return {
+    returnPct: round(clamp(base + signedNoise(strategyHash, "week:return", 1.6), -4.8, 6.6)),
+    positiveDays: Math.max(1, Math.min(5, Math.round(seed.hitRate * 7 + positiveNoise(strategyHash, "week:days", 1.2)))),
+    signalCount: Math.max(2, Math.min(18, Math.round(seed.signals / 1200 + positiveNoise(strategyHash, "week:signals", 3.4)))),
+    averageTradeReturnPct: round(mean(tradeReturns.slice(-12))),
+  };
 }
 
 function inferHoldHours(text: string) {
