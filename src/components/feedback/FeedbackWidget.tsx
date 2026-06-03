@@ -161,7 +161,7 @@ export function FeedbackWidget() {
               recordFeedbackEvent("Feedback Widget Opened", { trigger: "collapsed_button" });
             }}
           >
-            의견 남기고 혜택 받기
+            AI 앱 쿠폰 + 지표 받기
           </button>
         )}
       </div>
