@@ -32,11 +32,11 @@ export function Sidebar() {
         ))}
       </nav>
 
-      <div className="mt-auto space-y-4">
+      <div className="mt-6 space-y-3">
         <button
           type="button"
           onClick={() => router.push("/conditions")}
-          className="block w-full rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-left text-emerald-950"
+          className="block w-full rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-left text-emerald-950"
         >
           <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">01</p>
           <p className="mt-2 text-base font-black leading-6">80개 조건식 DB 확인하기</p>
@@ -44,20 +44,41 @@ export function Sidebar() {
         </button>
         <button
           type="button"
+          onClick={() => router.push("/alerts")}
+          className="block w-full rounded-2xl border border-sky-200 bg-sky-50 p-4 text-left text-sky-950"
+        >
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-sky-700">02</p>
+          <p className="mt-2 text-base font-black leading-6">24시간 자동 알림봇 만들기</p>
+          <p className="mt-3 text-xl font-black text-sky-700">→</p>
+        </button>
+        <button
+          type="button"
+          onClick={() => router.push("/backtests")}
+          className="block w-full rounded-2xl border border-violet-200 bg-violet-50 p-4 text-left text-violet-950"
+        >
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-violet-700">03</p>
+          <p className="mt-2 text-base font-black leading-6">25·26년 전략 생존력 백테스트</p>
+          <p className="mt-3 text-xl font-black text-violet-700">→</p>
+        </button>
+        <button
+          type="button"
           onClick={() => {
             window.dispatchEvent(new CustomEvent("siktalk:feedback-open", { detail: { mode: "survey", trigger: "sidebar_cta" } }));
           }}
-          className="block w-full rounded-2xl bg-slate-950 p-5 text-left text-white"
+          className="block w-full rounded-2xl bg-slate-950 p-4 text-left text-white"
         >
-          <p className="text-xs font-black uppercase tracking-[0.18em] text-sky-300">02</p>
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-amber-200">04</p>
           <p className="mt-2 text-base font-black leading-6">설문하고 앱AI쿠폰 + 트뷰 지표 받기</p>
-          <p className="mt-3 text-xl font-black text-sky-300">→</p>
+          <p className="mt-3 text-xl font-black text-amber-200">→</p>
         </button>
-        <a href="/api/feedback/ebook" download className="block rounded-2xl border border-amber-200 bg-amber-50 p-5 text-amber-950">
-          <p className="text-xs font-black uppercase tracking-[0.18em] text-amber-700">03</p>
+        <a href="/api/feedback/ebook" download className="block rounded-2xl border border-rose-200 bg-rose-50 p-4 text-rose-950">
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-rose-700">05</p>
           <p className="mt-2 text-base font-black leading-6">무료 영웅문 세팅 PDF 받기</p>
-          <p className="mt-3 text-xl font-black text-amber-700">→</p>
+          <p className="mt-3 text-xl font-black text-rose-700">→</p>
         </a>
+      </div>
+
+      <div className="mt-auto space-y-4">
         <Link href="/community" className="block border-t border-slate-200 pt-5 text-sm font-black text-slate-500">
           ? 도움말
         </Link>

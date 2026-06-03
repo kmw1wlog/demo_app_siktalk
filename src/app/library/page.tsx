@@ -1,10 +1,5 @@
-import { AppShell } from "@/components/app/AppShell";
-import { LibraryClient } from "@/components/strategy/LibraryClient";
+import { redirect } from "next/navigation";
 
 export default function LibraryPage() {
-  return (
-    <AppShell>
-      <LibraryClient />
-    </AppShell>
-  );
+  redirect("/backtests");
 }

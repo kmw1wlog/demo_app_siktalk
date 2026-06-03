@@ -26,11 +26,11 @@ export function TopNav() {
           <Link href="/drawer" className="hover:text-emerald-700">
             식 서랍
           </Link>
-          <Link href="/library" className="hover:text-emerald-700">
-            자료실
+          <Link href="/backtests" className="hover:text-emerald-700">
+            백테스트
           </Link>
-          <Link href="/paper-trading" className="hover:text-emerald-700">
-            모의투자
+          <Link href="/alerts" className="hover:text-emerald-700">
+            알림봇
           </Link>
         </nav>
         <div className="flex items-center md:hidden">

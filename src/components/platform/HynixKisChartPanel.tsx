@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import {
   CandlestickSeries,
   ColorType,
@@ -672,7 +673,7 @@ export function HynixKisChartPanel() {
         </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid gap-3 md:grid-cols-3">
         <button
           type="button"
           className="flex h-16 items-center justify-center rounded-2xl bg-emerald-600 px-5 text-base font-black text-white shadow-lg shadow-emerald-100"
@@ -687,6 +688,12 @@ export function HynixKisChartPanel() {
         >
           {showAlertPanel ? "알림 설정 닫기" : "관찰 알림 설정"}
         </button>
+        <Link
+          href="/alerts?idea=5일선%2020일선%20골든크로스%20알림%20세팅%20도와줘"
+          className="flex h-16 items-center justify-center rounded-2xl border border-sky-200 bg-sky-50 px-5 text-base font-black text-sky-900"
+        >
+          식톡앱알람봇
+        </Link>
       </div>
 
       {showAlertPanel ? <KisInAppAlertPanel /> : null}

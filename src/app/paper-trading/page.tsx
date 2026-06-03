@@ -1,10 +1,5 @@
-import { AppShell } from "@/components/app/AppShell";
-import { PaperTradingClient } from "@/components/paper/PaperTradingClient";
+import { redirect } from "next/navigation";
 
 export default function PaperTradingPage() {
-  return (
-    <AppShell>
-      <PaperTradingClient />
-    </AppShell>
-  );
+  redirect("/alerts");
 }

@@ -41,7 +41,7 @@ export function StrategyDetail({ id }: { id: string }) {
     return (
       <EmptyState
         title="전략 카드를 찾지 못했습니다"
-        description="식 서랍에 저장된 전략이거나 자료실 예시 전략인지 다시 확인해주세요."
+        description="식 서랍에 저장된 전략이거나 백테스트 예시 전략인지 다시 확인해주세요."
         action={<Link className="font-bold text-emerald-700" href="/drawer">식 서랍으로 이동</Link>}
       />
     );

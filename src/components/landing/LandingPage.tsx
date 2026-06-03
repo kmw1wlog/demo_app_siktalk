@@ -84,8 +84,8 @@ export function LandingPage() {
         <section className="mt-16 space-y-5 md:mt-20">
           <div className="flex items-center justify-between">
             <h2 className="text-2xl font-black tracking-tight md:text-3xl">처음 보는 사람을 위한 흐름</h2>
-            <Link href="/library" className="text-sm font-black text-emerald-700">
-              예시 보기
+            <Link href="/backtests" className="text-sm font-black text-emerald-700">
+              백테스트 보기
             </Link>
           </div>
           <div className="grid gap-4 md:grid-cols-3">
