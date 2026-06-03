@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { Badge } from "@/components/ui/Badge";
 
 export function TopNav() {
   return (
@@ -33,19 +32,7 @@ export function TopNav() {
           <Link href="/paper-trading" className="hover:text-emerald-700">
             모의투자
           </Link>
-          <Link href="/dashboard" className="hover:text-emerald-700">
-            대시보드
-          </Link>
-          <Link href="/admin" className="hover:text-emerald-700">
-            베타 신청
-          </Link>
         </nav>
-        <div className="hidden items-center gap-2 md:flex">
-          <Link href="/library" className="text-sm font-semibold text-slate-600 hover:text-emerald-700">
-            데모 자료실
-          </Link>
-          <Badge tone="emerald">Beta</Badge>
-        </div>
         <div className="flex items-center md:hidden">
           <Link
             href="/conditions"
