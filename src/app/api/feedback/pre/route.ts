@@ -10,9 +10,12 @@ type PreSurveyRow = {
 
 type PreSurveyBody = {
   email?: string;
+  marketing_consent?: boolean;
   activity_frequency?: string;
   tools?: string[];
-  has_bot?: string;
+  age_range?: string;
+  gender?: string;
+  privacy_consent?: boolean;
   session_id?: string;
   source?: string;
   campaign?: string;
@@ -26,7 +29,7 @@ export async function POST(request: Request) {
     if (!email || !email.includes("@")) {
       return Response.json({ error: "이메일을 입력해주세요." }, { status: 400 });
     }
-    if (!body.activity_frequency || !body.has_bot) {
+    if (!body.activity_frequency || !body.age_range || !body.gender || !body.privacy_consent) {
       return Response.json({ error: "필수 문항을 선택해주세요." }, { status: 400 });
     }
 
@@ -41,7 +44,7 @@ export async function POST(request: Request) {
       lead_id: lead.id,
       activity_frequency: body.activity_frequency,
       tools: Array.isArray(body.tools) ? body.tools : [],
-      has_bot: body.has_bot,
+      has_bot: `age:${body.age_range}|gender:${body.gender}|marketing:${body.marketing_consent ? "yes" : "no"}|privacy:${body.privacy_consent ? "yes" : "no"}`,
     });
 
     return Response.json({
