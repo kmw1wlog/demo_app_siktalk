@@ -14,25 +14,16 @@ import {
 import { trackEvent } from "@/lib/mixpanel";
 
 const feelingOptions = [
-  "키움 조건검색식으로 바로 옮겨지면 쓸 것 같다",
-  "TradingView Pine 지표로 복사되는 기능이 제일 필요하다",
-  "앱 차트보다 조건식 DB를 빠르게 찾는 기능이 더 중요하다",
-  "AI가 내 목적에 맞는 조건식을 고르는 흐름은 편했다",
-  "조건식을 차트에 겹쳐보는 기능은 검증용으로 괜찮았다",
-  "자동감시/알림까지 이어져야 계속 쓸 것 같다",
-  "키움이나 TradingView에서 직접 하는 것과 차이가 아직 작다",
+  "조건식 DB를 빨리 찾는 흐름은 괜찮았다",
+  "TradingView로 넘기는 기능이 더 먼저 필요하다",
+  "자동 알림까지 이어져야 계속 쓸 것 같다",
   "아직 잘 모르겠다",
 ];
 
 const frictionOptions = [
-  "첫 화면에서 다음에 눌러야 할 버튼이 바로 보이지 않았다",
-  "조건식 카드 설명만으로 실제 쓰는 상황이 잘 떠오르지 않았다",
-  "차트 화면이 키움/TradingView보다 익숙하지 않았다",
-  "TradingView로 가져가는 과정이 더 앞에 보여야 한다",
-  "알림 설정이 어디까지 되는지 명확하지 않았다",
-  "실제 데이터와 데모 데이터의 차이가 헷갈렸다",
-  "조건식이 실제로 통할지 판단할 근거가 부족했다",
-  "앱이 느리거나 화면 이동이 무겁게 느껴졌다",
+  "차트가 아직 키움이나 TradingView보다 불편했다",
+  "조건식 설명만으로 실제 쓰는 장면이 잘 안 떠올랐다",
+  "알림이나 백테스트가 어디까지 되는지 바로 이해되지 않았다",
   "불편한 점은 딱히 없었다",
 ];
 
@@ -47,42 +38,30 @@ const satisfactionOptions = ["만족한다", "반쯤 만족한다", "만족하�
 
 const referenceOptions = [
   "유튜브",
-  "블로그/카페",
   "텔레그램/단톡방",
   "TradingView 공개지표",
-  "키움 조건검색",
-  "직접 코딩",
-  "유료 강의/전자책",
-  "지인/커뮤니티",
-  "기타",
+  "직접 코딩/API",
 ];
 
 const noBotReasonOptions = [
-  "필요성을 크게 못 느꼈다",
-  "어떤 조건식이 좋은지 못 찾았다",
-  "무료 지표/조건식을 찾기 어렵다",
-  "유료 자료는 비싸다고 느꼈다",
-  "만드는 방법이 어렵다",
-  "API나 자동매매 연결이 어렵다",
-  "실제로 돈 넣고 돌리기 무섭다",
-  "백테스트/검증을 못 믿겠다",
-  "시간이 없어서 미뤘다",
+  "어떤 조건식이 좋은지 고르기 어렵다",
+  "만드는 방법이나 연결 방식이 어렵다",
+  "백테스트 결과를 믿기 어렵다",
+  "아직 필요성을 크게 못 느낀다",
 ];
 
 const oneThingOptions = [
-  "국장 조건식 DB를 잘 정리해주는 것",
-  "AI가 내 목적에 맞는 조건식을 찾아주는 것",
-  "조건식을 차트에 바로 렌더링하는 것",
-  "TradingView 지표로 바로 변환하는 것",
-  "조건식 성능을 실험/검증해주는 것",
-  "장중 자동감시/알림을 해주는 것",
-  "영웅문 세팅과 조건식을 쉽게 연결해주는 것",
+  "AI가 조건식을 빨리 찾아주는 것",
+  "차트에 바로 겹쳐보는 것",
+  "백테스트로 성과를 빨리 확인하는 것",
+  "장중 자동 알림까지 이어지는 것",
 ];
 
 export function FeedbackWidget() {
   const [mounted, setMounted] = useState(false);
   const [open, setOpen] = useState(false);
   const [surveyOpen, setSurveyOpen] = useState(false);
+  const [pulse, setPulse] = useState(false);
   const viewedRef = useRef(false);
 
   useEffect(() => {
@@ -99,16 +78,17 @@ export function FeedbackWidget() {
 
     const timer = window.setTimeout(() => {
       if (!isFeedbackDismissedForSession()) {
-        setOpen(true);
-        recordFeedbackEvent("Feedback Widget Opened", { trigger: "time_60s" });
+        setPulse(true);
+        recordFeedbackEvent("Feedback Widget Viewed", { trigger: "time_60s_nudge" });
       }
     }, 60000);
 
     function handleSignal(event: Event) {
       if (isFeedbackDismissedForSession()) return;
       const detail = (event as CustomEvent<{ signal?: string }>).detail;
-      setOpen(true);
-      recordFeedbackEvent("Feedback Widget Opened", { trigger: detail?.signal || "usage_signal" });
+      setOpen(false);
+      setPulse(true);
+      recordFeedbackEvent("Feedback Widget Viewed", { trigger: detail?.signal || "usage_signal" });
     }
 
     function handleOpen(event: Event) {
@@ -118,6 +98,7 @@ export function FeedbackWidget() {
         setOpen(false);
       } else {
         setOpen(true);
+        setPulse(false);
       }
       recordFeedbackEvent("Feedback Widget Opened", { trigger: detail?.trigger || "manual_open" });
     }
@@ -137,11 +118,13 @@ export function FeedbackWidget() {
     recordFeedbackEvent("Feedback CTA Clicked", { source: open ? "expanded_card" : "collapsed_button" });
     setSurveyOpen(true);
     setOpen(false);
+    setPulse(false);
   }
 
   function dismiss() {
     dismissFeedbackForSession();
     setOpen(false);
+    setPulse(false);
     recordFeedbackEvent("Feedback Widget Dismissed", { source: "later_button" });
   }
 
@@ -166,13 +149,16 @@ export function FeedbackWidget() {
         ) : (
           <button
             type="button"
-            className="min-h-11 rounded-lg border border-slate-200 bg-white px-4 text-sm font-black text-slate-900 shadow-xl"
+            className={`min-h-11 rounded-lg border bg-white px-4 text-sm font-black text-slate-900 shadow-xl transition ${
+              pulse ? "border-emerald-300 ring-4 ring-emerald-100" : "border-slate-200"
+            }`}
             onClick={() => {
               setOpen(true);
+              setPulse(false);
               recordFeedbackEvent("Feedback Widget Opened", { trigger: "collapsed_button" });
             }}
           >
-            30초 설문 · 쿠폰 + 지표 받기
+            피드백 남기고 혜택 받기
           </button>
         )}
       </div>
@@ -294,9 +280,16 @@ function FeedbackSurveyModal({
             </SurveyField>
           ) : null}
 
-          <SurveyField title="6. 식톡이 딱 하나만 잘해야 한다면?">
+          <SurveyField
+            title="6. 식톡이 단 한 가지만 제대로 해야 한다면?"
+            hint="반드시 먼저 갖춰졌으면 하는 기능 한 가지를 골라주세요."
+          >
             <RadioList options={oneThingOptions} value={oneThing} onChange={setOneThing} />
           </SurveyField>
+
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600">
+            피드백 메일: <a href="mailto:issue.research777@gmail.com" className="font-black text-emerald-700">issue.research777@gmail.com</a>
+          </div>
 
           {error ? <p className="rounded-lg bg-rose-50 p-3 text-sm font-bold text-rose-700">{error}</p> : null}
 
@@ -313,10 +306,11 @@ function FeedbackSurveyModal({
   );
 }
 
-function SurveyField({ title, children }: { title: string; children: ReactNode }) {
+function SurveyField({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
   return (
     <div>
       <p className="mb-3 text-sm font-black text-slate-900">{title}</p>
+      {hint ? <p className="mb-3 text-xs font-semibold text-slate-500">{hint}</p> : null}
       {children}
     </div>
   );

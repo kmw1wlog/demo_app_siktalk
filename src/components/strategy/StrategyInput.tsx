@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { DemoPlatformPanel } from "@/components/demo/DemoPlatformPanel";
-import { StrategyWorkbench } from "@/components/strategy/StrategyWorkbench";
 import { Textarea } from "@/components/ui/Textarea";
 import { quickIdeas } from "@/lib/constants";
 import { DEMO_STRATEGY, isDemoStrategyQuestion } from "@/lib/demo-strategy";
@@ -311,7 +310,7 @@ export function StrategyInput({
                 strategy_name: strategy.title,
               });
               markFeedbackSignal("chart_render_clicked", "/app:chart");
-              setDemoView("chart");
+              window.location.href = "/chart";
             }}
           />
         ) : null}
@@ -322,7 +321,6 @@ export function StrategyInput({
           </div>
         ) : null}
 
-        <StrategyWorkbench selectedMarket={selectedMarket} currentStrategy={strategy} />
       </div>
 
       {(demoView === "home" || demoView === "chat") ? <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-100 bg-white/95 px-4 pb-4 pt-3 backdrop-blur md:sticky md:bottom-4 md:mx-auto md:mt-6 md:w-full md:max-w-3xl md:rounded-3xl md:border md:px-4 md:shadow-lg md:ring-1 md:ring-slate-100">
@@ -347,6 +345,11 @@ export function StrategyInput({
             도구함
           </Link>
         </div>
+        {selectedMarket !== "koreanStock" ? (
+          <p className="mb-2 px-2 text-center text-[11px] font-semibold text-amber-600">
+            현재 데모는 국장 대표 전략 기준으로 먼저 보여드립니다. 미장·코인 지원이 꼭 필요하면 우측 하단 설문에 남겨주세요.
+          </p>
+        ) : null}
         <div className="flex items-end gap-2 rounded-full bg-slate-100 px-2 py-2 ring-1 ring-slate-200">
           <button
             type="button"
@@ -714,6 +717,8 @@ function StrategyCardStage({
           <button
             type="button"
             className="mt-3 flex h-12 w-full items-center justify-center rounded-2xl border border-slate-200 bg-white text-sm font-black text-slate-700"
+            data-demo-notice-title="TradingView 복사 데모"
+            data-demo-notice-message="현재 데모에서는 복사 버튼 위치와 흐름만 먼저 보여드립니다. 실제로 바로 붙여넣을 식이 꼭 필요하면 우측 하단 설문에 남겨주세요."
           >
             TradingView Pine 복사
           </button>
@@ -736,6 +741,10 @@ function StrategyCardStage({
             </button>
           </div>
         </div>
+      </div>
+
+      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
+        현재 데모에서는 일부 전략 카드와 차트 예시를 5·20선 대표 전략 중심으로 먼저 보여드립니다. 이 흐름이 완전하게 구현되길 원하면 우측 하단 설문에 꼭 남겨주세요.
       </div>
 
       <p className="text-center text-sm font-black text-slate-600">국장(한국 주식)에 최적화된 조건식만 엄선하여 제공합니다.</p>

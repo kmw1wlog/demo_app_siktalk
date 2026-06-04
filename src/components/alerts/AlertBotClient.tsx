@@ -1,258 +1,228 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Card } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
-import { Textarea } from "@/components/ui/Textarea";
-import { buildAlertBotDraft, type AlertBotDraft } from "@/lib/alert-bot";
-import { trackEvent } from "@/lib/mixpanel";
+import { SHOWCASE_ALERT, SHOWCASE_STRATEGY } from "@/lib/showcase-data";
 
-type AlertBotResponse = {
-  ok?: boolean;
-  answer?: string;
-  draft?: AlertBotDraft;
-  provider?: "qwen" | "fallback";
-  turn?: number;
-  error?: string;
-};
-
-type BacktestPreviewResponse = {
-  ok?: boolean;
-  result?: {
-    oneWeekPreview: {
-      returnPct: number;
-      positiveDays: number;
-      signalCount: number;
-      averageTradeReturnPct: number;
-    };
-  };
-  error?: string;
-};
-
-type ConversationItem = {
-  role: "user" | "assistant";
-  text: string;
-  provider?: "qwen" | "fallback";
-};
-
-const quickPrompts = [
-  "5일선 20일선 골든크로스가 뜨면 장중에 바로 알려줘",
-  "RSI 과매도 반등이 15분봉에서 나오면 조용히 모아서 알려줘",
-  "장 막판 거래대금 상위 유지 종목만 텔레그램으로 받고 싶어",
-];
+const quickPrompts = SHOWCASE_ALERT.quickChips;
+const footerPrompts = SHOWCASE_ALERT.footerChips;
 
 export function AlertBotClient({ initialMessage = "" }: { initialMessage?: string }) {
-  const [message, setMessage] = useState(initialMessage);
-  const [turn, setTurn] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [conversation, setConversation] = useState<ConversationItem[]>([]);
-  const [draft, setDraft] = useState<AlertBotDraft>(buildAlertBotDraft(initialMessage || quickPrompts[0]));
-  const [backtestPreview, setBacktestPreview] = useState<BacktestPreviewResponse["result"] | null>(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
-
-  useEffect(() => {
-    void trackEvent("Alert Bot Viewed", { source: initialMessage ? "chart" : "nav" });
-  }, [initialMessage]);
-
-  const canSubmit = message.trim().length > 0 && turn < 3 && !loading;
-  const turnLabel = useMemo(() => `가벼운 설정 대화 ${Math.min(turn + 1, 3)}/3`, [turn]);
-  const previewIdea = conversation.filter((item) => item.role === "user").map((item) => item.text).join(" ") || initialMessage || quickPrompts[0];
-
-  async function submit(nextMessage?: string) {
-    const outgoing = (nextMessage ?? message).trim();
-    if (!outgoing || loading || turn >= 3) return;
-
-    setLoading(true);
-    setError("");
-    const nextHistory = [...conversation.filter((item) => item.role === "user").map((item) => item.text), outgoing];
-    setDraft(buildAlertBotDraft(nextHistory.join(" ")));
-    void trackEvent("Alert Bot Message Sent", {
-      message_length: outgoing.length,
-      turn: turn + 1,
-    });
-
-    try {
-      const response = await fetch("/api/ai/alert-bot", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          history: conversation.filter((item) => item.role === "user").map((item) => item.text),
-          message: outgoing,
-          turn: turn + 1,
-        }),
-      });
-      const data = (await response.json()) as AlertBotResponse;
-      if (!response.ok || !data.ok || !data.answer || !data.draft) {
-        throw new Error(data.error || "알림봇 응답을 만들지 못했습니다.");
-      }
-
-      setConversation((current) => [
-        ...current,
-        { role: "user", text: outgoing },
-        { role: "assistant", text: data.answer ?? "", provider: data.provider },
-      ]);
-      setDraft(data.draft);
-      setTurn(data.turn ?? turn + 1);
-      setMessage("");
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "알림봇 응답에 실패했습니다.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function loadPreview() {
-    setPreviewLoading(true);
-    setError("");
-    try {
-      const response = await fetch("/api/backtests/run", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: draft.title,
-          rawIdea: previewIdea,
-        }),
-      });
-      const data = (await response.json()) as BacktestPreviewResponse;
-      if (!response.ok || !data.ok || !data.result) {
-        throw new Error(data.error || "성과 미리보기를 불러오지 못했습니다.");
-      }
-      setBacktestPreview(data.result);
-      void trackEvent("Alert Bot Backtest Preview Viewed", { title: draft.title });
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "성과 미리보기에 실패했습니다.");
-    } finally {
-      setPreviewLoading(false);
-    }
-  }
+  const [message, setMessage] = useState(initialMessage || "5·20선 골든크로스 + 거래량 회복\n뜨면 바로 알려줘\n텔레그램으로 받고 싶어");
+  const [draft] = useState(SHOWCASE_ALERT);
+  const summaryList = useMemo(() => SHOWCASE_ALERT.conversationAssistant.slice(1), []);
 
   return (
-    <div className="mx-auto max-w-6xl space-y-5">
-      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-        <div>
-          <p className="text-sm font-black text-emerald-700">24시간 자동 알림봇 만들기</p>
-          <h1 className="mt-2 text-3xl font-black tracking-[-0.04em] text-slate-950">식톡앱알람봇</h1>
-          <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">
-            조건식을 새로 만들지 않고, 이미 정한 관찰 기준을 언제 어떤 방식으로 받을지 빠르게 정리합니다.
-          </p>
-        </div>
-        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700">
-          {turnLabel}
-        </div>
+    <section className="mx-auto max-w-[1380px] space-y-6">
+      <div>
+        <h1 className="text-[2.9rem] font-black tracking-[-0.05em] text-slate-950">24시간 자동 알림봇 만들기</h1>
+        <p className="mt-3 text-base font-semibold text-slate-500">전략이 뜨는 순간을 놓치지 않도록 알림 조건을 정리합니다.</p>
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
-        <Card className="space-y-4">
-          <div className="flex flex-wrap gap-2">
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_0.72fr_0.8fr]">
+        <div className="rounded-[1.8rem] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center gap-3">
+            <p className="text-2xl font-black tracking-[-0.04em] text-slate-950">AI와 알림 설정 대화</p>
+            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-sm font-black text-emerald-700">1분 안에 설정</span>
+          </div>
+          <div className="mt-5 flex flex-wrap gap-3">
             {quickPrompts.map((prompt) => (
               <button
                 key={prompt}
                 type="button"
-                className="rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-black text-slate-700"
-                onClick={() => void submit(prompt)}
+                className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700"
+                data-demo-notice-title="알림 조건 데모"
+                data-demo-notice-message="현재는 알림 조건을 어떻게 정리할지 대화 흐름을 먼저 보여드리는 데모입니다."
               >
                 {prompt}
               </button>
             ))}
           </div>
 
-          <div className="space-y-3">
-            {conversation.length === 0 ? (
-              <div className="rounded-2xl bg-slate-50 p-4 text-sm font-semibold leading-6 text-slate-500">
-                예: “5일선 20일선 골든크로스가 뜨면 장중에 바로 알려줘”
+          <div className="mt-6 space-y-5">
+            <div className="flex justify-end">
+              <div className="max-w-lg rounded-[1.5rem] bg-emerald-50 px-5 py-4 text-base font-semibold leading-7 text-slate-800 shadow-sm">
+                {message.split("\n").map((line) => (
+                  <div key={line}>{line}</div>
+                ))}
+                <div className="mt-3 text-right text-sm font-black text-slate-400">오전 10:48</div>
               </div>
-            ) : (
-              conversation.map((item, index) => (
-                <div
-                  key={`${item.role}-${index}`}
-                  className={`rounded-2xl px-4 py-3 text-sm font-semibold leading-6 ${
-                    item.role === "user" ? "bg-slate-950 text-white" : "bg-slate-50 text-slate-700"
-                  }`}
-                >
-                  {item.text}
-                  {item.role === "assistant" && item.provider ? (
-                    <div className="mt-2 text-xs font-black uppercase tracking-[0.18em] text-emerald-600">{item.provider}</div>
-                  ) : null}
-                </div>
-              ))
-            )}
+            </div>
+
+            <div className="flex items-start gap-4">
+              <span className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-600 text-xl font-black text-white">식</span>
+              <div className="flex-1 rounded-[1.6rem] border border-slate-200 bg-white px-5 py-5 shadow-sm">
+                <p className="text-base font-semibold leading-7 text-slate-700">{SHOWCASE_ALERT.conversationAssistant[0]}</p>
+                <ul className="mt-4 space-y-3 text-base font-semibold text-slate-700">
+                  {summaryList.map((line) => (
+                    <li key={line} className="flex gap-3">
+                      <span className="mt-1 text-emerald-500">●</span>
+                      <span>{line}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-5 text-base font-semibold text-slate-500">아래 초안을 확인하고, 필요하면 수정해 주세요!</p>
+                <div className="mt-4 text-right text-sm font-black text-slate-400">오전 10:48</div>
+              </div>
+            </div>
           </div>
 
-          <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
-            <Textarea
-              rows={3}
-              value={message}
-              onChange={(event) => setMessage(event.target.value)}
-              placeholder="어떤 조건을 얼마나 자주, 어디로 받고 싶은지 적어주세요."
-            />
-            {error ? <p className="text-sm font-bold text-rose-600">{error}</p> : null}
-            <div className="flex flex-wrap gap-3">
-              <Button className="rounded-2xl" onClick={() => void submit()} disabled={!canSubmit}>
-                {loading ? "정리 중" : turn >= 3 ? "3턴 완료" : "알림 초안 받기"}
-              </Button>
-              <Link
-                href="/app?idea=5일선%2020일선%20골든크로스%20전략%20찾아줘&view=card&from=chat"
-                className="inline-flex min-h-10 items-center justify-center rounded-2xl border border-slate-200 px-4 text-sm font-black text-slate-700"
+          <div className="mt-5 flex flex-wrap gap-3">
+            {footerPrompts.map((prompt) => (
+              <button
+                key={prompt}
+                type="button"
+                className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700"
+                data-demo-notice-title="알림 조건 데모"
+                data-demo-notice-message="현재는 자주 쓰는 알림 수정 흐름을 먼저 보여드리는 데모입니다."
               >
-                차트 적용으로 가기
+                {prompt}
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-5 rounded-[1.6rem] border border-slate-200 bg-white p-3">
+            <div className="flex items-end gap-3">
+              <textarea
+                value={message}
+                onChange={(event) => setMessage(event.target.value)}
+                className="min-h-28 flex-1 resize-none rounded-[1.2rem] border-0 bg-transparent px-4 py-4 text-base font-semibold text-slate-700 outline-none"
+                placeholder="원하는 알림 조건을 말해보세요..."
+              />
+              <button
+                type="button"
+                className="mb-2 flex size-12 items-center justify-center rounded-full bg-emerald-400 text-xl font-black text-white"
+                data-demo-notice-title="알림봇 답변 데모"
+                data-demo-notice-message="현재는 알림봇이 어떤 초안을 만들어줄지 데모 흐름만 먼저 보여드리고 있습니다."
+              >
+                ↗
+              </button>
+            </div>
+            <div className="pr-2 text-right text-sm font-black text-slate-300">0/300</div>
+          </div>
+
+          <p className="mt-4 text-sm font-semibold text-slate-400">ⓘ 전략 추천이 아니라, 사용자가 선택한 전략을 놓치지 않도록 돕는 알림 설정입니다.</p>
+        </div>
+
+        <div className="space-y-5">
+          <div className="rounded-[1.8rem] border border-slate-200 bg-white p-5 shadow-sm">
+            <p className="text-[1.8rem] font-black tracking-[-0.04em] text-slate-950">현재 전략 요약</p>
+            <div className="mt-5 rounded-[1.6rem] border border-emerald-200 bg-emerald-50/60 p-5">
+              <p className="text-sm font-black text-emerald-700">ACTIVE 전략</p>
+              <h2 className="mt-3 break-keep text-[2rem] font-black leading-tight tracking-[-0.04em] text-slate-950">{SHOWCASE_STRATEGY.title}</h2>
+              <Link href="/chart" className="mt-4 inline-flex text-base font-black text-emerald-700">
+                차트에서 보기 ↗
               </Link>
             </div>
-          </div>
-        </Card>
-
-        <Card className="space-y-4">
-          <div>
-            <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">draft</p>
-            <h2 className="mt-2 text-xl font-black text-slate-950">현재 알림 초안</h2>
-          </div>
-          <DraftRow label="알림 이름" value={draft.title} />
-          <DraftRow label="시장" value={draft.market === "crypto" ? "코인" : draft.market === "usStock" ? "미장" : "국장"} />
-          <DraftRow label="시간봉" value={draft.timeframe} />
-          <DraftRow label="관찰 조건" value={draft.trigger} />
-          <DraftRow label="알림 빈도" value={draft.cadence} />
-          <DraftRow label="조용 시간" value={draft.quietHours} />
-          <DraftRow label="전달 방식" value={draft.delivery} />
-          <div className="rounded-2xl border border-slate-200 bg-white p-4">
-            <div className="flex items-center justify-between gap-3">
+            <div className="mt-5 space-y-4 text-base font-semibold leading-7 text-slate-600">
               <div>
-                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">preview</p>
-                <h3 className="mt-2 text-base font-black text-slate-950">알림 전에 전략 체력 미리보기</h3>
+                <p className="text-base font-black text-slate-400">전략 설명</p>
+                <p className="mt-1">{SHOWCASE_STRATEGY.description}</p>
               </div>
-              <Button variant="secondary" className="rounded-2xl" onClick={() => void loadPreview()} disabled={previewLoading}>
-                {previewLoading ? "확인 중" : "최근 1주 미리보기"}
-              </Button>
+              <div>
+                <p className="text-base font-black text-slate-400">핵심 조건</p>
+                <ul className="mt-2 space-y-1">
+                  <li>· 5·20선 골든크로스</li>
+                  <li>· 거래량 &gt; 최근 20일 평균 거래량</li>
+                  <li>· 15분봉 기준</li>
+                </ul>
+              </div>
+              <div>
+                <p className="text-base font-black text-slate-400">주요 성과 (백테스트)</p>
+                <ul className="mt-2 space-y-1">
+                  {SHOWCASE_ALERT.strategyScore.map((item) => (
+                    <li key={item}>· {item}</li>
+                  ))}
+                </ul>
+              </div>
             </div>
-            {backtestPreview ? (
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <DraftRow label="최근 1주 수익률" value={`${backtestPreview.oneWeekPreview.returnPct}%`} />
-                <DraftRow label="양수 일수" value={`${backtestPreview.oneWeekPreview.positiveDays}일`} />
-                <DraftRow label="신호 수" value={`${backtestPreview.oneWeekPreview.signalCount}회`} />
-                <DraftRow label="평균 체결 수익률" value={`${backtestPreview.oneWeekPreview.averageTradeReturnPct}%`} />
-              </div>
-            ) : null}
-            <Link
-              href={`/backtests?title=${encodeURIComponent(draft.title)}&idea=${encodeURIComponent(previewIdea)}`}
-              className="mt-4 inline-flex min-h-10 items-center justify-center rounded-2xl border border-violet-200 bg-violet-50 px-4 text-sm font-black text-violet-900"
-            >
-              1년 백테스트 자세히
+            <Link href="/backtests" className="mt-5 flex h-14 items-center justify-center rounded-2xl border border-slate-200 bg-white text-base font-black text-slate-700">
+              전략 성과 다시 보기
             </Link>
           </div>
-          <div className="rounded-2xl bg-emerald-50 p-4 text-sm font-semibold leading-6 text-emerald-800">
-            실제 자동매매가 아니라, 어떤 조건을 언제 다시 보게 만들지 정리하는 화면입니다.
+
+          <div className="rounded-[1.8rem] border border-slate-200 bg-white p-5 shadow-sm">
+            <p className="text-[1.8rem] font-black tracking-[-0.04em] text-slate-950">현재 감시 대상</p>
+            <div className="mt-5 grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-sm font-black text-slate-400">전체 종목</p>
+                <p className="mt-2 text-[2.2rem] font-black tracking-[-0.04em] text-slate-950">{SHOWCASE_ALERT.targetCount}</p>
+              </div>
+              <div>
+                <p className="text-sm font-black text-slate-400">실시간 감시 중</p>
+                <p className="mt-2 text-[2.2rem] font-black tracking-[-0.04em] text-slate-950">{SHOWCASE_ALERT.liveWatchingCount}</p>
+              </div>
+            </div>
+            <p className="mt-5 text-base font-semibold text-slate-500">조건 충족 시 즉시 알려드릴게요.</p>
           </div>
-        </Card>
+        </div>
+
+        <div className="rounded-[1.8rem] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <p className="text-[1.8rem] font-black tracking-[-0.04em] text-slate-950">알림봇 초안</p>
+            <button
+              type="button"
+              className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-600"
+              data-demo-notice-title="알림 미리보기 데모"
+              data-demo-notice-message="실제 발송 미리보기보다, 현재는 알림 초안 화면을 먼저 보여드리는 데모입니다."
+            >
+              ○ 미리보기
+            </button>
+          </div>
+
+          <div className="mt-5 space-y-4">
+            <DraftField label="알림봇 이름" value={draft.title} />
+            <DraftField label="감시 시장" value={`${draft.market}   ${draft.marketDetail}`} />
+            <DraftField label="감시 봉" value={draft.timeframe} />
+            <DraftField label="감시 시간" value={SHOWCASE_STRATEGY.monitoringHours} />
+            <DraftField label="알림 조건" value={draft.trigger} />
+            <DraftField label="알림 빈도" value={draft.cadence} />
+            <DraftField label="전송 방식" value={draft.delivery} />
+            <DraftField label="상태" value={draft.status} />
+          </div>
+
+          <button
+            type="button"
+            className="mt-5 flex h-16 w-full items-center justify-center rounded-2xl bg-emerald-600 text-xl font-black text-white shadow-lg shadow-emerald-100"
+            data-demo-notice-title="알림 저장 데모"
+            data-demo-notice-message="현재는 알림 저장 전 화면과 흐름을 먼저 보여드리는 데모입니다. 실제 저장/자동감시가 꼭 필요하면 우측 하단 설문에 남겨주세요."
+          >
+            알림 초안 저장
+          </button>
+          <Link href="/chart" className="mt-3 flex h-14 items-center justify-center rounded-2xl border border-slate-200 bg-white text-base font-black text-slate-700">
+            차트 적용으로 돌아가기
+          </Link>
+          <button
+            type="button"
+            className="mt-3 flex h-14 w-full items-center justify-center rounded-2xl border border-slate-200 bg-white text-base font-black text-slate-700"
+            data-demo-notice-title="고급 설정 데모"
+            data-demo-notice-message="세부 알림 로직과 빈도 조정은 순차적으로 붙일 예정입니다. 꼭 필요하면 우측 하단 설문에 남겨주세요."
+          >
+            ⚙ 고급 설정 열기
+          </button>
+        </div>
       </div>
-    </div>
+    </section>
   );
 }
 
-function DraftRow({ label, value }: { label: string; value: string }) {
+function DraftField({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl bg-slate-50 p-4">
-      <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">{label}</p>
-      <p className="mt-2 text-sm font-semibold leading-6 text-slate-800">{value}</p>
+    <div className="rounded-[1.4rem] border border-slate-200 bg-white px-5 py-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-black text-slate-400">{label}</p>
+          <p className="mt-3 break-keep text-xl font-black leading-tight tracking-[-0.04em] text-slate-950">{value}</p>
+        </div>
+        <button
+          type="button"
+          className="text-lg text-slate-400"
+          data-demo-notice-title="알림 수정 데모"
+          data-demo-notice-message="각 항목 수정 기능은 준비 중이며, 현재는 구조만 먼저 보여드리고 있습니다."
+        >
+          ✎
+        </button>
+      </div>
     </div>
   );
 }

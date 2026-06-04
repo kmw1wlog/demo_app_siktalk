@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { assetClassLabel, timeframeLabel } from "@/lib/format";
 import { markFeedbackSignal } from "@/lib/feedback-session";
 import { trackEvent } from "@/lib/mixpanel";
+import { showDemoNotice } from "@/lib/ui-signals";
 import { platformCopyTabs, getPlatformCopy, type PlatformCopyTab } from "@/lib/platform-copies";
 import type { StrategyCard } from "@/lib/types";
 
@@ -34,13 +35,25 @@ export function PlatformCarryPanel({
   }, [activeTab, compact, strategy.id, strategy.title]);
 
   async function copyCurrent() {
+    if (activeTab === "tradingview") {
+      setStatus("실제 TradingView 복사식은 준비 중입니다. 매우 원하시면 우측 하단 설문에 남겨주세요.");
+      showDemoNotice(
+        "TradingView 복사 데모",
+        "현재는 플랫폼 퍼가기 흐름을 먼저 보여드리고 있습니다. 실제로 복붙 가능한 식이 꼭 필요하면 우측 하단 설문에 남겨주세요.",
+      );
+      markFeedbackSignal("export_clicked", "/app:platform_carry");
+      void trackEvent("TradingView Export Clicked", {
+        copy_type: "tab_content",
+        platform: activeTab,
+        status: "demo_notice",
+        strategy_id: strategy.id,
+      });
+      return;
+    }
     try {
       await navigator.clipboard.writeText(activeCopy);
       setStatus("현재 탭을 복사했습니다.");
-      if (activeTab === "tradingview") {
-        markFeedbackSignal("export_clicked", "/app:platform_carry");
-      }
-      void trackEvent(activeTab === "tradingview" ? "TradingView Export Clicked" : "Platform Copy Clicked", {
+      void trackEvent("Platform Copy Clicked", {
         copy_type: "tab_content",
         platform: activeTab,
         status: "success",
@@ -48,7 +61,7 @@ export function PlatformCarryPanel({
       });
     } catch {
       setStatus("복사에 실패했습니다. 내용을 직접 선택해 복사해주세요.");
-      void trackEvent(activeTab === "tradingview" ? "TradingView Export Clicked" : "Platform Copy Clicked", {
+      void trackEvent("Platform Copy Clicked", {
         copy_type: "tab_content",
         platform: activeTab,
         status: "failed",
@@ -132,14 +145,17 @@ export function PlatformCarryPanel({
   async function copyWebhookUrl() {
     setStatus("");
     try {
-      const info = await ensureExportInfo();
-      await navigator.clipboard.writeText(info.webhookUrl);
-      setStatus("TradingView webhook URL을 복사했습니다.");
+      await ensureExportInfo();
+      setStatus("실제 TradingView webhook URL은 준비 중입니다. 꼭 필요하면 우측 하단 설문에 남겨주세요.");
+      showDemoNotice(
+        "Webhook 복사 데모",
+        "실제 TradingView용 webhook URL은 준비 중입니다. 이 연동이 꼭 필요하면 우측 하단 설문에 남겨주세요.",
+      );
       markFeedbackSignal("export_clicked", "/app:platform_carry");
       void trackEvent("TradingView Export Clicked", {
         copy_type: "webhook_url",
         platform: activeTab,
-        status: "success",
+        status: "demo_notice",
         strategy_id: strategy.id,
       });
     } catch (error) {
@@ -156,14 +172,17 @@ export function PlatformCarryPanel({
   async function copyTradingViewJson() {
     setStatus("");
     try {
-      const info = await ensureExportInfo();
-      await navigator.clipboard.writeText(info.tradingViewJson);
-      setStatus("TradingView 메시지 JSON을 복사했습니다.");
+      await ensureExportInfo();
+      setStatus("실제 TradingView 메시지 JSON은 준비 중입니다. 꼭 필요하면 우측 하단 설문에 남겨주세요.");
+      showDemoNotice(
+        "TradingView 메시지 데모",
+        "지금은 메시지 JSON 흐름만 먼저 보여드립니다. 실제 자동 복사 형식이 꼭 필요하면 우측 하단 설문에 남겨주세요.",
+      );
       markFeedbackSignal("export_clicked", "/app:platform_carry");
       void trackEvent("TradingView Export Clicked", {
         copy_type: "message_json",
         platform: activeTab,
-        status: "success",
+        status: "demo_notice",
         strategy_id: strategy.id,
       });
     } catch (error) {

@@ -1,308 +1,179 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Card } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
-import { Textarea } from "@/components/ui/Textarea";
-import { trackEvent } from "@/lib/mixpanel";
-import type { BacktestRunResult } from "@/lib/backtest-engine";
-
-type BacktestResponse = {
-  ok?: boolean;
-  cached?: boolean;
-  error?: string;
-  result?: BacktestRunResult;
-};
-
-const presetIdeas = [
-  { title: "5·20선 재가속 관찰식", rawIdea: "5일선 20일선 골든크로스와 거래량 회복이 붙을 때 관찰하고 싶어." },
-  { title: "거래량 급증 돌파", rawIdea: "거래량이 급증하고 전고점을 돌파하는 종목을 관찰하고 싶어." },
-  { title: "RSI 과매도 반등", rawIdea: "RSI 과매도 반등이 나오는 구간을 관찰하고 싶어." },
-];
+import Link from "next/link";
+import { SHOWCASE_BACKTEST, SHOWCASE_STRATEGY } from "@/lib/showcase-data";
+import { showDemoNotice } from "@/lib/ui-signals";
 
 export function BacktestClient({
   initialTitle,
-  initialIdea,
 }: {
   initialTitle?: string;
   initialIdea?: string;
 }) {
-  const [title, setTitle] = useState(initialTitle || presetIdeas[0].title);
-  const [rawIdea, setRawIdea] = useState(initialIdea || presetIdeas[0].rawIdea);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [result, setResult] = useState<BacktestRunResult | null>(null);
-  const [cached, setCached] = useState(false);
-  const bootedRef = useRef(false);
+  const title = initialTitle || SHOWCASE_STRATEGY.title;
 
-  const runBacktest = useCallback(async (nextTitle = title, nextIdea = rawIdea) => {
-    if (!nextIdea.trim()) {
-      setError("전략 설명을 먼저 적어주세요.");
-      return;
-    }
-
-    setLoading(true);
-    setError("");
-    void trackEvent("Backtest Requested", {
-      strategy_name: nextTitle,
-      text_length: nextIdea.length,
-    });
-
-    try {
-      const response = await fetch("/api/backtests/run", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: nextTitle, rawIdea: nextIdea }),
-      });
-      const data = (await response.json()) as BacktestResponse;
-      if (!response.ok || !data.ok || !data.result) {
-        throw new Error(data.error || "백테스트 결과를 가져오지 못했습니다.");
-      }
-      setResult(data.result);
-      setCached(Boolean(data.cached));
-      setTitle(nextTitle);
-      setRawIdea(nextIdea);
-      void trackEvent("Backtest Completed", {
-        cached: Boolean(data.cached),
-        strategy_hash: data.result.strategyHash,
-        strategy_name: data.result.strategyTitle,
-      });
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "백테스트 계산에 실패했습니다.");
-    } finally {
-      setLoading(false);
-    }
-  }, [rawIdea, title]);
-
-  useEffect(() => {
-    if (bootedRef.current) return;
-    bootedRef.current = true;
-    void trackEvent("Backtest Screen Viewed", { source: "nav" });
-    void runBacktest(initialTitle || presetIdeas[0].title, initialIdea || presetIdeas[0].rawIdea);
-  }, [initialIdea, initialTitle, runBacktest]);
-
-  const metricCards = useMemo(() => {
-    if (!result) return [];
-    return [
-      { label: "월평균 수익률", value: `${formatSigned(result.metrics.monthlyAverageReturnPct)}%` },
-      { label: "양수 월 비율", value: `${result.metrics.positiveMonthRatioPct}%` },
-      { label: "최근 3개월 성과", value: `${formatSigned(result.metrics.recentThreeMonthReturnPct)}%` },
-      { label: "최대 연속 손실", value: `${result.metrics.maxLossStreak}회` },
-      { label: "평균 보유 시간", value: `${result.metrics.averageHoldHours}시간` },
-      { label: "매매 1회당 평균/중앙 수익률", value: `${formatSigned(result.metrics.averageTradeReturnPct)}% / ${formatSigned(result.metrics.medianTradeReturnPct)}%` },
-      { label: "월별 발생 횟수", value: `월 ${result.metrics.monthlySignalCount}회` },
-    ];
-  }, [result]);
+  function handleBacktestClick() {
+    showDemoNotice(
+      "백테스트 계산 데모",
+      "백테스트 기능은 구현 중이며, 현재 화면은 결과 레이아웃을 먼저 보여드리는 데모입니다. 정교한 계산이 꼭 필요하면 우측 하단 설문에 남겨주세요.",
+    );
+  }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-5">
-      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-        <div>
-          <p className="text-sm font-black text-emerald-700">25,26년 동안 내 전략이 꾸준히 생존할까?</p>
-          <h1 className="mt-2 text-3xl font-black tracking-[-0.04em] text-slate-950">백테스트</h1>
-          <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">
-            stock_app의 KR 1분봉 백테스트 샘플을 바탕으로 현재 전략과 가장 가까운 formula 조합에 매핑해 보여줍니다.
-          </p>
-        </div>
-        {result ? (
-          <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700">
-            {cached ? "캐시 결과" : "새 계산"}
-          </div>
-        ) : null}
+    <section className="mx-auto max-w-[1380px] space-y-6">
+      <div>
+        <span className="rounded-full bg-violet-50 px-3 py-1 text-sm font-black text-violet-700">생존력 검증</span>
+        <h1 className="mt-4 text-[2.9rem] font-black tracking-[-0.05em] text-slate-950">{SHOWCASE_BACKTEST.title}</h1>
+        <p className="mt-3 text-base font-semibold text-slate-500">{SHOWCASE_BACKTEST.description}</p>
       </div>
 
-      <Card className="space-y-4">
-        <div className="flex flex-wrap gap-2">
-          {presetIdeas.map((preset) => (
+      <div className="rounded-[1.8rem] border border-slate-200 bg-white px-5 py-5 shadow-sm">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_88px_180px_230px_110px_200px]">
+          <div>
+            <p className="text-sm font-black text-emerald-700">현재 전략</p>
+            <h2 className="mt-3 break-keep text-[2.05rem] font-black leading-tight tracking-[-0.04em] text-slate-950">{title}</h2>
+          </div>
+          <div className="flex items-center justify-center">
+            <span className="flex size-14 items-center justify-center rounded-full bg-emerald-50 text-2xl text-emerald-600">★</span>
+          </div>
+          <SelectBox label="시장" value="전체" />
+          <SelectBox label="기간" value="2025.01 ~ 2026.현재" />
+          <div className="grid gap-3 md:grid-cols-[1fr_160px] xl:grid-cols-[1fr_160px]">
+            <SelectBox label="봉" value="일봉" />
             <button
-              key={preset.title}
               type="button"
-              className="rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-black text-slate-700"
-              onClick={() => void runBacktest(preset.title, preset.rawIdea)}
+              className="mt-7 flex h-14 items-center justify-center rounded-2xl bg-emerald-600 px-5 text-xl font-black text-white shadow-lg shadow-emerald-100"
+              onClick={handleBacktestClick}
+              data-demo-notice-title="백테스트 계산 데모"
+              data-demo-notice-message="백테스트 기능은 구현 중이며, 현재는 결과 화면과 흐름을 먼저 보여드리는 데모입니다. 정교한 계산이 꼭 필요하면 우측 하단 설문에 남겨주세요."
             >
-              {preset.title}
+              백테스트 계산 ⚡
             </button>
-          ))}
+          </div>
         </div>
-        <div className="grid gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
-          <input
-            value={title}
-            onChange={(event) => setTitle(event.target.value)}
-            className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-black text-slate-900"
-            placeholder="전략 이름"
-          />
-          <Textarea
-            rows={3}
-            value={rawIdea}
-            onChange={(event) => setRawIdea(event.target.value)}
-            placeholder="전략을 한 문장으로 적으면 가장 가까운 stock_app formula로 매핑합니다."
-          />
-        </div>
-        {error ? <p className="text-sm font-bold text-rose-600">{error}</p> : null}
-        <div className="flex flex-wrap gap-3">
-          <Button className="rounded-2xl" onClick={() => void runBacktest()} disabled={loading}>
-            {loading ? "백테스트 계산 중" : "25·26년 백테스트 계산"}
-          </Button>
-        </div>
-      </Card>
+      </div>
 
-      {result ? (
-        <>
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            {metricCards.map((metric) => (
-              <Card key={metric.label} className="space-y-2">
-                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">{metric.label}</p>
-                <p className="text-2xl font-black tracking-[-0.03em] text-slate-950">{metric.value}</p>
-              </Card>
+      <div className="grid gap-4 xl:grid-cols-4">
+        {SHOWCASE_BACKTEST.metrics.slice(0, 4).map((metric) => (
+          <MetricPanel key={metric.label} {...metric} />
+        ))}
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-3">
+        {SHOWCASE_BACKTEST.metrics.slice(4).map((metric) => (
+          <MetricPanel key={metric.label} {...metric} />
+        ))}
+      </div>
+
+      <div className="rounded-[1.6rem] border border-slate-200 bg-white px-5 py-4 text-sm font-semibold text-slate-400">
+        ⓘ 원천 데이터는 내부 연산으로만 사용되며 결과만 제공합니다.
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-3">
+        <div className="rounded-[1.8rem] border border-slate-200 bg-white p-5 shadow-sm">
+          <h3 className="text-[1.9rem] font-black tracking-[-0.04em] text-slate-950">누적 성과 곡선</h3>
+          <div className="mt-4 flex gap-5 text-base font-black">
+            <span className="text-emerald-600">━ 전략</span>
+            <span className="text-slate-700">━ 코스피</span>
+            <span className="text-sky-500">━ 코스닥</span>
+          </div>
+          <svg viewBox="0 0 480 320" className="mt-5 h-[320px] w-full">
+            {[0, 1, 2, 3, 4].map((line) => <line key={line} x1="40" x2="450" y1={40 + line * 55} y2={40 + line * 55} stroke="#eef2f7" />)}
+            <polyline points="40,238 100,220 160,170 220,130 280,110 340,108 390,75 450,48" fill="none" stroke="#10b981" strokeWidth="4" />
+            <polyline points="40,238 100,232 160,208 220,190 280,178 340,172 390,168 450,162" fill="none" stroke="#1e3a8a" strokeWidth="3" />
+            <polyline points="40,238 100,236 160,222 220,210 280,198 340,190 390,184 450,176" fill="none" stroke="#38bdf8" strokeWidth="3" />
+            {SHOWCASE_BACKTEST.months.map((month, index) => (
+              <text key={month} x={40 + index * 58} y="298" fontSize="16" fill="#64748b">{month}</text>
+            ))}
+            {["200%", "160%", "120%", "80%", "40%", "0%"].map((label, index) => (
+              <text key={label} x="0" y={48 + index * 44} fontSize="16" fill="#64748b">{label}</text>
+            ))}
+          </svg>
+          <div className="rounded-2xl bg-slate-50 px-4 py-3 text-base font-semibold text-slate-400">2025.01~2026.현재 누적 수익률 (수수료/세금 제외)</div>
+        </div>
+
+        <div className="rounded-[1.8rem] border border-slate-200 bg-white p-5 shadow-sm">
+          <h3 className="text-[1.9rem] font-black tracking-[-0.04em] text-slate-950">월별 성과 <span className="text-base text-slate-400">(월간 수익률)</span></h3>
+          <div className="mt-5 flex h-[320px] items-end justify-between gap-3">
+            {SHOWCASE_BACKTEST.monthlyBars.map((bar, index) => (
+              <div key={index} className="flex flex-1 flex-col items-center gap-2">
+                <div
+                  className={`w-full rounded-t-lg ${bar >= 0 ? "bg-emerald-500" : "bg-violet-500"}`}
+                  style={{ height: `${Math.max(Math.abs(bar) * 16, 10)}px` }}
+                />
+              </div>
             ))}
           </div>
-
-          <Card className="space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-black text-slate-950">누적 성과 곡선</h2>
-                <p className="mt-1 text-sm font-semibold text-slate-500">전략 vs 코스피 vs 코스닥 기준선</p>
-              </div>
-              <div className="text-xs font-bold text-slate-500">{result.source}</div>
-            </div>
-            <EquityCurveChart data={result.cumulativeCurve} />
-          </Card>
-
-          <div className="grid gap-5 xl:grid-cols-2">
-            <Card className="space-y-3">
-              <h2 className="text-lg font-black text-slate-950">월별 성과</h2>
-              <BarChart
-                data={result.monthlyPoints.map((item) => ({ label: item.month.slice(2), value: item.strategyReturnPct }))}
-                positiveColor="#10b981"
-                negativeColor="#fb7185"
-              />
-            </Card>
-            <Card className="space-y-3">
-              <h2 className="text-lg font-black text-slate-950">월별 발생 횟수</h2>
-              <BarChart
-                data={result.monthlyPoints.map((item) => ({ label: item.month.slice(2), value: item.signalCount }))}
-                positiveColor="#0f172a"
-                negativeColor="#0f172a"
-              />
-            </Card>
+          <div className="mt-4 flex flex-wrap gap-4 text-sm font-black text-slate-500">
+            <span>양수(초록) / 음수(보라) 월 수익률</span>
           </div>
+        </div>
 
-          <Card className="space-y-4">
-            <div>
-              <h2 className="text-lg font-black text-slate-950">이번 전략이 어떻게 매핑됐는지</h2>
-              <p className="mt-1 text-sm font-semibold leading-6 text-slate-500">{result.note}</p>
-            </div>
-            <div className="grid gap-3 md:grid-cols-3">
-              {result.mappedFormulas.map((formula) => (
-                <div key={formula.formulaKey} className="rounded-2xl bg-slate-50 p-4">
-                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">{formula.formulaKey}</p>
-                  <p className="mt-2 text-base font-black text-slate-950">{formula.label}</p>
-                  <p className="mt-1 text-sm font-semibold text-slate-600">가중치 {Math.round(formula.weight * 100)}%</p>
-                </div>
-              ))}
-            </div>
-          </Card>
-        </>
-      ) : null}
-    </div>
+        <div className="rounded-[1.8rem] border border-slate-200 bg-white p-5 shadow-sm">
+          <h3 className="text-[1.9rem] font-black tracking-[-0.04em] text-slate-950">월별 발생 횟수 <span className="text-base text-slate-400">(시그널 수)</span></h3>
+          <div className="mt-5 flex h-[320px] items-end justify-between gap-3">
+            {SHOWCASE_BACKTEST.monthlySignals.map((bar, index) => (
+              <div key={index} className="flex flex-1 flex-col items-center gap-2">
+                <div className="w-full rounded-t-lg bg-sky-500" style={{ height: `${Math.max(bar * 4, 10)}px` }} />
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 text-sm font-black text-slate-500">매수/매도 시그널 발생 횟수 (월 기준)</div>
+        </div>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-3">
+        <Link href="/chart" className="flex h-20 items-center justify-center rounded-[1.5rem] border border-emerald-200 bg-white px-4 text-lg font-black text-emerald-700 shadow-sm">
+          차트에 적용
+        </Link>
+        <Link href="/alerts" className="flex h-20 items-center justify-center rounded-[1.5rem] border border-sky-200 bg-white px-4 text-lg font-black text-sky-700 shadow-sm">
+          24시간 알림봇 만들기
+        </Link>
+        <button
+          type="button"
+          data-feedback-open="card"
+          data-feedback-only="true"
+          data-feedback-trigger="backtests_beta_cta"
+          className="flex h-20 items-center justify-center rounded-[1.5rem] bg-[#060820] px-4 text-lg font-black text-white shadow-sm"
+        >
+          베타 신청하고 먼저 써보기 ✦
+        </button>
+      </div>
+    </section>
   );
 }
 
-function formatSigned(value: number) {
-  return value > 0 ? `+${value}` : `${value}`;
-}
-
-function EquityCurveChart({
-  data,
-}: {
-  data: BacktestRunResult["cumulativeCurve"];
-}) {
-  const width = 880;
-  const height = 280;
-  const padding = 26;
-  const values = data.flatMap((item) => [item.strategyEquity, item.kospiEquity, item.kosdaqEquity]);
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const scaleX = (index: number) => padding + (index / Math.max(data.length - 1, 1)) * (width - padding * 2);
-  const scaleY = (value: number) => height - padding - ((value - min) / Math.max(max - min, 1)) * (height - padding * 2);
-
+function SelectBox({ label, value }: { label: string; value: string }) {
   return (
-    <div className="overflow-x-auto">
-      <svg viewBox={`0 0 ${width} ${height}`} className="h-[280px] min-w-[760px] w-full rounded-2xl bg-slate-50">
-        {[0, 1, 2, 3].map((line) => (
-          <line
-            key={line}
-            x1={padding}
-            x2={width - padding}
-            y1={padding + ((height - padding * 2) / 3) * line}
-            y2={padding + ((height - padding * 2) / 3) * line}
-            stroke="#e2e8f0"
-          />
-        ))}
-        <polyline points={toLine(data.map((item, index) => [scaleX(index), scaleY(item.strategyEquity)]))} fill="none" stroke="#059669" strokeWidth="3" />
-        <polyline points={toLine(data.map((item, index) => [scaleX(index), scaleY(item.kospiEquity)]))} fill="none" stroke="#0f172a" strokeWidth="2" />
-        <polyline points={toLine(data.map((item, index) => [scaleX(index), scaleY(item.kosdaqEquity)]))} fill="none" stroke="#38bdf8" strokeWidth="2" />
-      </svg>
-      <div className="mt-3 flex flex-wrap gap-4 text-xs font-black text-slate-600">
-        <span className="text-emerald-700">● 전략</span>
-        <span className="text-slate-900">● 코스피</span>
-        <span className="text-sky-600">● 코스닥</span>
+    <div>
+      <p className="text-sm font-black text-slate-400">{label}</p>
+      <div className="mt-2 flex h-14 items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 text-base font-black text-slate-700">
+        {value}
+        <span>▾</span>
       </div>
     </div>
   );
 }
 
-function BarChart({
-  data,
-  positiveColor,
-  negativeColor,
+function MetricPanel({
+  label,
+  value,
+  tone,
 }: {
-  data: Array<{ label: string; value: number }>;
-  positiveColor: string;
-  negativeColor: string;
+  label: string;
+  value: string;
+  tone: "emerald" | "violet" | "slate" | "mixed";
 }) {
-  const width = 880;
-  const height = 240;
-  const padding = 26;
-  const max = Math.max(...data.map((item) => item.value), 1);
-  const min = Math.min(...data.map((item) => item.value), 0);
-  const zeroY = height - padding - ((0 - min) / Math.max(max - min, 1)) * (height - padding * 2);
-  const barWidth = (width - padding * 2) / Math.max(data.length, 1) - 8;
+  const color =
+    tone === "emerald" ? "text-emerald-600" : tone === "violet" ? "text-violet-600" : tone === "mixed" ? "text-slate-950" : "text-slate-950";
 
   return (
-    <div className="overflow-x-auto">
-      <svg viewBox={`0 0 ${width} ${height}`} className="h-[240px] min-w-[760px] w-full rounded-2xl bg-slate-50">
-        <line x1={padding} x2={width - padding} y1={zeroY} y2={zeroY} stroke="#cbd5e1" />
-        {data.map((item, index) => {
-          const x = padding + index * ((width - padding * 2) / data.length) + 4;
-          const y = height - padding - ((item.value - min) / Math.max(max - min, 1)) * (height - padding * 2);
-          const barHeight = Math.abs(zeroY - y);
-          return (
-            <g key={item.label}>
-              <rect
-                x={x}
-                y={item.value >= 0 ? y : zeroY}
-                width={barWidth}
-                height={Math.max(barHeight, 2)}
-                rx="6"
-                fill={item.value >= 0 ? positiveColor : negativeColor}
-                opacity="0.88"
-              />
-            </g>
-          );
-        })}
-      </svg>
-      <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-black text-slate-500">
-        {data.slice(-6).map((item) => (
-          <span key={item.label} className="rounded-full bg-slate-100 px-3 py-1">
-            {item.label} {item.value}
-          </span>
-        ))}
+    <div className="rounded-[1.7rem] border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-base font-black text-slate-500">{label}</p>
+        <span className="text-3xl text-slate-300">{tone === "emerald" ? "↗" : tone === "violet" ? "⌁" : tone === "mixed" ? "⚖" : "◔"}</span>
       </div>
+      <p className={`mt-6 break-keep text-[3.2rem] font-black leading-tight tracking-[-0.05em] ${color}`}>{value}</p>
     </div>
   );
-}
-
-function toLine(points: Array<[number, number]>) {
-  return points.map(([x, y]) => `${x},${y}`).join(" ");
 }

@@ -8,7 +8,8 @@ import { conditionTemplates } from "@/lib/condition-templates";
 import { resolveChartSceneVariant } from "@/lib/demo-media";
 import { markFeedbackSignal, setFeedbackLastScreen } from "@/lib/feedback-session";
 import { trackEvent } from "@/lib/mixpanel";
-import type { AssetClass, ConditionCategory, ConditionTemplate } from "@/lib/types";
+import { addEvent, saveStrategy } from "@/lib/storage";
+import type { AssetClass, ConditionCategory, ConditionTemplate, StrategyCard } from "@/lib/types";
 
 const categoryLabels: Record<ConditionCategory | "all", string> = {
   all: "전체",
@@ -72,6 +73,7 @@ export function ConditionsExplorer() {
   const [activeTemplate, setActiveTemplate] = useState<ConditionTemplate | null>(null);
   const [originRect, setOriginRect] = useState<Rect | null>(null);
   const [expanded, setExpanded] = useState(false);
+  const [savedIds, setSavedIds] = useState<string[]>([]);
   const cardRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const lastSearchKeyRef = useRef("");
   const openedRef = useRef(false);
@@ -94,6 +96,17 @@ export function ConditionsExplorer() {
 
   const visibleTemplates = filtered.slice(0, 80);
   const selectedTemplate = visibleTemplates.find((template) => template.id === selectedId) ?? visibleTemplates[0] ?? conditionTemplates[0];
+
+  function saveTemplateToDrawer(template: ConditionTemplate) {
+    saveStrategy(createStrategyFromTemplate(template));
+    addEvent({ type: "condition_saved", conditionId: template.id, createdAt: new Date().toISOString() });
+    setSavedIds((current) => (current.includes(template.id) ? current : [...current, template.id]));
+    void trackEvent("Condition Saved To Drawer", {
+      condition_id: template.id,
+      condition_name: template.title,
+      source: activeTemplate?.id === template.id ? "conditions_modal" : "conditions_preview",
+    });
+  }
 
   useEffect(() => {
     setFeedbackLastScreen("/conditions");
@@ -243,6 +256,11 @@ export function ConditionsExplorer() {
           ))}
         </div>
       </div>
+      {market !== "all" && market !== "koreanStock" ? (
+        <p className="mx-auto max-w-6xl text-sm font-semibold text-amber-600">
+          현재 데모의 상세 카드와 차트 연결은 국장 대표 전략 중심으로 먼저 보여드립니다.
+        </p>
+      ) : null}
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_390px]">
         {filtered.length ? (
@@ -265,15 +283,24 @@ export function ConditionsExplorer() {
           </section>
         )}
 
-        {selectedTemplate ? <SelectedPreview template={selectedTemplate} onOpen={() => openDetail(selectedTemplate, "preview")} /> : null}
+        {selectedTemplate ? (
+          <SelectedPreview
+            template={selectedTemplate}
+            saved={savedIds.includes(selectedTemplate.id)}
+            onOpen={() => openDetail(selectedTemplate, "preview")}
+            onSave={() => saveTemplateToDrawer(selectedTemplate)}
+          />
+        ) : null}
       </div>
 
       {activeTemplate ? (
         <ExpandedConditionCard
           template={activeTemplate}
+          saved={savedIds.includes(activeTemplate.id)}
           originRect={originRect}
           expanded={expanded}
           onClose={closeDetail}
+          onSave={() => saveTemplateToDrawer(activeTemplate)}
         />
       ) : null}
 
@@ -329,7 +356,17 @@ function ConditionTile({
   );
 }
 
-function SelectedPreview({ template, onOpen }: { template: ConditionTemplate; onOpen: () => void }) {
+function SelectedPreview({
+  template,
+  saved,
+  onOpen,
+  onSave,
+}: {
+  template: ConditionTemplate;
+  saved: boolean;
+  onOpen: () => void;
+  onSave: () => void;
+}) {
   const variant = resolveChartSceneVariant({ title: template.title, strategyType: template.strategyType });
   const strategyHref = `/app?idea=${encodeURIComponent("5일선 20일선 골든크로스 전략 찾아줘")}&view=card&from=conditions`;
   const guide = indicatorGuides[template.id];
@@ -388,8 +425,12 @@ function SelectedPreview({ template, onOpen }: { template: ConditionTemplate; on
       >
         전략 카드 만들기 →
       </Link>
-      <button type="button" className="mt-3 flex h-12 w-full items-center justify-center rounded-2xl border border-slate-200 bg-white text-sm font-black text-slate-700">
-        즐겨찾기에 추가
+      <button
+        type="button"
+        className="mt-3 flex h-12 w-full items-center justify-center rounded-2xl border border-slate-200 bg-white text-sm font-black text-slate-700"
+        onClick={onSave}
+      >
+        {saved ? "식서랍에 추가됨" : "식서랍에 추가"}
       </button>
     </aside>
   );
@@ -397,14 +438,18 @@ function SelectedPreview({ template, onOpen }: { template: ConditionTemplate; on
 
 function ExpandedConditionCard({
   template,
+  saved,
   originRect,
   expanded,
   onClose,
+  onSave,
 }: {
   template: ConditionTemplate;
+  saved: boolean;
   originRect: Rect | null;
   expanded: boolean;
   onClose: () => void;
+  onSave: () => void;
 }) {
   const guide = indicatorGuides[template.id];
   const variant = resolveChartSceneVariant({ title: template.title, strategyType: template.strategyType });
@@ -438,7 +483,9 @@ function ExpandedConditionCard({
               ← 조건식
             </button>
             <p className="text-sm font-black text-slate-950">상세 이미지</p>
-            <span className="w-14 text-right text-sm font-black text-emerald-600">식톡</span>
+            <button type="button" className="text-right text-sm font-black text-emerald-600" onClick={onSave}>
+              {saved ? "식서랍 추가됨" : "식서랍에 추가"}
+            </button>
           </div>
 
           <div className="mx-auto max-w-3xl p-4">
@@ -464,6 +511,21 @@ function ExpandedConditionCard({
                     #{tag}
                   </span>
                 ))}
+              </div>
+              <div className="mt-5 flex flex-wrap gap-3">
+                <Link
+                  href={`/app?idea=${encodeURIComponent("5일선 20일선 골든크로스 전략 찾아줘")}&view=card&from=conditions`}
+                  className="inline-flex h-11 items-center justify-center rounded-2xl bg-emerald-600 px-4 text-sm font-black text-white"
+                >
+                  전략카드 만들기
+                </Link>
+                <button
+                  type="button"
+                  className="inline-flex h-11 items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700"
+                  onClick={onSave}
+                >
+                  {saved ? "식서랍에 추가됨" : "식서랍에 추가"}
+                </button>
               </div>
             </div>
           </div>
@@ -559,5 +621,43 @@ function getTargetRect(): Rect {
     top: Math.max(padding, (window.innerHeight - height) / 2),
     width,
     height,
+  };
+}
+
+function createStrategyFromTemplate(template: ConditionTemplate): StrategyCard {
+  const now = new Date().toISOString();
+  const conditions = {
+    entry: ["진입 조건은 전략 카드에서 추가로 조합합니다."],
+    exit: ["핵심 조건이 무너지면 관찰을 종료합니다."],
+    universe: ["유동성이 충분한 대상만 확인합니다."],
+    filters: ["데모 카드이므로 실제 적용 전 차트에서 다시 확인합니다."],
+    risk: ["현재는 전략 예시를 식서랍에 정리하는 데모입니다."],
+  };
+
+  if (template.category === "entry") conditions.entry = [template.plainKorean];
+  if (template.category === "exit") conditions.exit = [template.plainKorean];
+  if (template.category === "universe") conditions.universe = [template.plainKorean];
+  if (template.category === "filters") conditions.filters = [template.plainKorean];
+  if (template.category === "risk") conditions.risk = [template.plainKorean];
+
+  return {
+    id: `condition_${template.id}`,
+    title: template.title,
+    rawIdea: template.plainKorean,
+    summary: template.plainKorean,
+    strategyType: template.strategyType,
+    assetClass: template.market,
+    timeframe: "daily",
+    conditions,
+    suitableRegime: [template.whyUse],
+    weakRegime: ["실제 적용 전 차트에서 한 번 더 검토가 필요합니다."],
+    riskSummary: "조건식 이해와 저장을 위한 데모 카드입니다.",
+    validationIdea: "식서랍에 넣고 나중에 전략 카드로 조합해보세요.",
+    requestedPlatforms: [],
+    createdAt: now,
+    updatedAt: now,
+    version: 1,
+    isSaved: true,
+    hasReport: false,
   };
 }

@@ -158,9 +158,18 @@ export function PreSurveyPage() {
           </a>
 
           <div className="grid gap-3">
-            <MediaSlot title="앱 온보딩 이미지" />
-            <MediaSlot title="인앱 이미지" />
-            <MediaSlot title="앱 GIF" />
+            <MediaSlot
+              title="GIF 1. AI가 전략 3개를 바로 추천"
+              description="돌파 전략 찾아줘 입력 후 3개 카드가 바로 뜨는 장면"
+            />
+            <MediaSlot
+              title="GIF 2. 차트에 5-20선과 거래량이 바로 렌더"
+              description="실제 차트에서 타점과 거래량이 함께 보이는 장면"
+            />
+            <MediaSlot
+              title="GIF 3. 24시간 알림 초안이 대화로 정리"
+              description="알림봇 화면에서 초안이 만들어지고 저장 직전까지 가는 장면"
+            />
           </div>
         </section>
 
@@ -269,10 +278,11 @@ function CheckboxGroup({
   );
 }
 
-function MediaSlot({ title }: { title: string }) {
+function MediaSlot({ title, description }: { title: string; description?: string }) {
   return (
-    <div className="flex h-28 items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white text-sm font-black text-slate-400">
-      {title}
+    <div className="flex h-28 flex-col items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white px-4 text-center">
+      <p className="text-sm font-black text-slate-500">{title}</p>
+      {description ? <p className="mt-2 text-xs font-semibold leading-5 text-slate-400">{description}</p> : null}
     </div>
   );
 }

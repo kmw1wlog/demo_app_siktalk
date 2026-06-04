@@ -19,6 +19,7 @@ import { calculateRsi, calculateSma, calculateStochastic } from "@/lib/chart-ind
 import type { ChartInterval, HynixChartCandle, HynixChartSnapshot } from "@/lib/kis-minute-chart";
 import { markFeedbackSignal, setFeedbackLastScreen } from "@/lib/feedback-session";
 import { trackEvent } from "@/lib/mixpanel";
+import { showDemoNotice } from "@/lib/ui-signals";
 import { KisInAppAlertPanel } from "./KisInAppAlertPanel";
 
 type ApiResponse = {
@@ -202,21 +203,20 @@ export function HynixKisChartPanel() {
   }, [interval]);
 
   async function copyPineScript() {
-    try {
-      await navigator.clipboard.writeText(buildPineScript(5, 20));
-      setCopyStatus("TradingView Pine Script를 복사했습니다.");
-      markFeedbackSignal("export_clicked", "/app:chart");
-      void trackEvent("TradingView Export Clicked", {
-        copy_type: "pine_script",
-        interval,
-        platform: "tradingview",
-        status: "success",
-        strategy_name: "5·20선 골든크로스 + 거래량 회복",
-        symbol: "000660",
-      });
-    } catch {
-      setCopyStatus("복사에 실패했습니다. 브라우저 권한을 확인하세요.");
-    }
+    setCopyStatus("실제 TradingView용 복사식은 준비 중입니다. 꼭 필요하면 우측 하단 설문에 남겨주세요.");
+    showDemoNotice(
+      "TradingView 복사 데모",
+      "지금은 복사 버튼의 위치와 흐름만 먼저 보여드립니다. 실제로 바로 붙여넣을 식이 매우 필요하면 우측 하단 설문에 남겨주세요.",
+    );
+    markFeedbackSignal("export_clicked", "/app:chart");
+    void trackEvent("TradingView Export Clicked", {
+      copy_type: "pine_script",
+      interval,
+      platform: "tradingview",
+      status: "demo_notice",
+      strategy_name: "5·20선 골든크로스 + 거래량 회복",
+      symbol: "000660",
+    });
   }
 
   useEffect(() => {
@@ -476,11 +476,12 @@ export function HynixKisChartPanel() {
       </div>
 
       <div className="rounded-[1.6rem] border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
           <div>
             <p className="text-sm font-black text-slate-400">적용 중 전략:</p>
             <h2 className="mt-2 text-3xl font-black tracking-[-0.04em] text-slate-950">5·20선 골든크로스 + 거래량 회복</h2>
             <p className="mt-2 text-sm font-semibold text-slate-500">미래 봉을 억지로 만들지 않고, 실제 과거 봉에서 5/20선 교차와 거래량 회복이 잡힌 구간만 표시합니다.</p>
+            <p className="mt-2 text-sm font-semibold text-amber-600">현재 데모는 5·20선 대표 전략 중심으로 먼저 보여드립니다. 더 다양한 전략 렌더가 꼭 필요하면 우측 하단 설문에 남겨주세요.</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <StatusPill label={`${intervalLabel(interval)} 적용`} active />
@@ -691,6 +692,8 @@ export function HynixKisChartPanel() {
         <Link
           href="/alerts?idea=5일선%2020일선%20골든크로스%20알림%20세팅%20도와줘"
           className="flex h-16 items-center justify-center rounded-2xl border border-sky-200 bg-sky-50 px-5 text-base font-black text-sky-900"
+          data-demo-notice-title="식톡 알림봇 데모"
+          data-demo-notice-message="현재는 알림 초안을 빠르게 보여드리는 데모입니다. 정교한 알림 설정이 꼭 필요하면 우측 하단 설문에 남겨주세요."
         >
           식톡앱알람봇
         </Link>
@@ -783,23 +786,6 @@ function StatusPill({ label, active }: { label: string; active: boolean }) {
       {label}
     </span>
   );
-}
-
-function buildPineScript(fastLength: number, slowLength: number) {
-  return `//@version=5
-indicator("SikTalk 5·20선 재가속 관찰식", overlay=true)
-
-fast = ta.sma(close, ${fastLength})
-slow = ta.sma(close, ${slowLength})
-volMa20 = ta.sma(volume, 20)
-volumeRecovered = volume >= volMa20 and ta.lowest(volume / volMa20, 10) < 0.8
-startCondition = ta.crossover(fast, slow) and volumeRecovered and close >= open
-endCondition = ta.crossunder(fast, slow) or close < slow
-
-plot(fast, "MA${fastLength}", color=color.new(color.lime, 0), linewidth=2)
-plot(slow, "MA${slowLength}", color=color.new(color.blue, 0), linewidth=2)
-plotshape(startCondition, title="시작 조건", text="시작", style=shape.circle, location=location.belowbar, color=color.lime, textcolor=color.white, size=size.tiny)
-plotshape(endCondition, title="종료 조건", text="종료", style=shape.triangledown, location=location.abovebar, color=color.orange, textcolor=color.white, size=size.tiny)`;
 }
 
 function formatDate(value: string) {

@@ -5,7 +5,9 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { conversionPlatformLabel } from "@/lib/format";
 import { createId } from "@/lib/id";
+import { trackEvent } from "@/lib/mixpanel";
 import { addConversionRequest, addEvent, saveStrategy } from "@/lib/storage";
+import { openFeedback } from "@/lib/ui-signals";
 import type { ConversionPlatform, StrategyCard } from "@/lib/types";
 import { WaitlistForm } from "./WaitlistForm";
 
@@ -23,21 +25,29 @@ export function FakeDoorModal({
   const [message, setMessage] = useState("");
   const label = conversionPlatformLabel(platform);
 
-  function submit(email: string, topChoice: boolean) {
+  async function submit(topChoice: boolean, notify: boolean, share: boolean) {
     const createdAt = new Date().toISOString();
-    addEvent({ type: "waitlist_submitted", strategyId: strategy.id, platform, email, createdAt });
+    addEvent({ type: "waitlist_submitted", strategyId: strategy.id, platform, createdAt });
     addConversionRequest({
       id: createId("waitlist"),
       strategyId: strategy.id,
       platform,
       strategyType: strategy.strategyType,
       requestedSection: "full",
-      email,
       createdAt,
       source: "card",
       intentLevel: topChoice ? "topChoice" : "waitlist",
     });
-    setMessage("대기 등록이 완료되었습니다.");
+    await trackEvent("Conversion Waitlist Joined", {
+      notify,
+      platform,
+      share,
+      strategy_id: strategy.id,
+      strategy_name: strategy.title,
+      top_choice: topChoice,
+    });
+    openFeedback("survey", "conversion_waitlist");
+    setMessage("대기 등록을 받았습니다. 아래 우측 설문에서도 필요 기능을 남겨주시면 우선순위 판단에 반영합니다.");
   }
 
   function saveOnly() {
@@ -56,7 +66,7 @@ export function FakeDoorModal({
         <p className="rounded-lg bg-amber-50 p-3 text-sm leading-6 text-amber-900">
           현재 버튼은 실제 변환 결과를 제공하지 않습니다. 사용자의 요청 데이터는 개발 우선순위 판단에만 사용됩니다.
         </p>
-        <WaitlistForm onSubmit={submit} />
+        <WaitlistForm onSubmit={(topChoice, notify, share) => void submit(topChoice, notify, share)} />
         <div className="flex flex-wrap gap-2">
           <Button variant="secondary" onClick={saveOnly}>현재는 전략 카드로 저장하기</Button>
           <Button variant="ghost" onClick={onClose}>닫기</Button>

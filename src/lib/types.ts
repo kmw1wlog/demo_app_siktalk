@@ -176,7 +176,7 @@ export type AnalyticsEvent =
       type: "waitlist_submitted";
       strategyId: string;
       platform: ConversionPlatform;
-      email: string;
+      email?: string;
       createdAt: string;
     }
   | {

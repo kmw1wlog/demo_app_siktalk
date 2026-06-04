@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { AppShell } from "@/components/app/AppShell";
 
 export default function PricingPage() {
@@ -29,12 +28,15 @@ export default function PricingPage() {
             <p className="mt-3 text-sm font-semibold leading-6 text-slate-700">
               사전 설문을 남기면 데모 링크와 전자책 다운로드 흐름을 바로 확인할 수 있습니다.
             </p>
-            <Link
-              href="/survey"
+            <button
+              type="button"
+              data-feedback-open="card"
+              data-feedback-only="true"
+              data-feedback-trigger="pricing_demo_apply"
               className="mt-5 inline-flex min-h-11 items-center justify-center rounded-xl bg-emerald-600 px-4 text-sm font-black text-white"
             >
               데모 신청 열기
-            </Link>
+            </button>
           </div>
         </div>
       </section>
